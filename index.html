@@ -1,0 +1,2239 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KCC Weekstart Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- pptxgenjs staat niet op cdnjs; jsDelivr is de bron, unpkg de reserve (zie ensurePptx). -->
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+<style>
+  :root{
+    --bg:#f4f5f8; --card:#fff; --ink:#1c2333; --muted:#6b7280; --line:#e4e7ec;
+    --brand:#4f46e5; --ok:#0f9d58; --bad:#d93025; --warn:#b26a00;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--ink);padding:24px 16px}
+  .wrap{max-width:1280px;margin:0 auto}
+  header.top{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px 24px;margin-bottom:16px}
+  header.top h1{font-size:1.5rem;letter-spacing:-.01em}
+  header.top p{color:var(--muted);margin-top:4px;font-size:.92rem}
+  .build{font-size:.7rem;font-weight:600;letter-spacing:.04em;color:var(--muted);background:#eef0f6;
+    border-radius:20px;padding:3px 10px;vertical-align:middle;margin-left:8px;white-space:nowrap}
+  .build.bad{background:#fdecea;color:#8c1d18}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px 24px;margin-bottom:16px}
+  .controls{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;align-items:end}
+  label{display:block;font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:6px}
+  input[type=date],select,input[type=file]{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:.92rem;background:#fff}
+  input[type=date]:focus,select:focus{outline:2px solid var(--brand);outline-offset:1px}
+  button{padding:10px 18px;border:0;border-radius:8px;background:var(--brand);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  button:hover{filter:brightness(1.08)}
+  button.ghost{background:#eef0f6;color:var(--ink);font-weight:500;padding:6px 12px;font-size:.85rem}
+  .presets{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .presets span{font-size:.8rem;color:var(--muted);margin-right:2px}
+  button.export{margin-left:auto;background:#1E2761;font-size:.88rem;padding:8px 16px}
+  button.export:disabled{background:#c8ccd6;cursor:not-allowed;filter:none}
+
+  /* normen */
+  .normen{margin-top:14px;display:flex;gap:16px;flex-wrap:wrap;align-items:center;
+    padding:10px 14px;background:#f8f9fc;border:1px solid var(--line);border-radius:8px}
+  .normen > span{font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+  .normen label{display:inline-flex;align-items:center;gap:6px;margin:0;font-size:.85rem;
+    text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink)}
+  .normen input{width:62px;padding:4px 6px;font-size:.85rem;text-align:right}
+
+  /* filters */
+  details.filters{padding:0}
+  details.filters > summary{cursor:pointer;padding:16px 24px;font-size:1rem;font-weight:600;list-style:none;
+    display:flex;align-items:center;gap:10px}
+  details.filters > summary::-webkit-details-marker{display:none}
+  details.filters > summary::before{content:"▸";color:var(--muted);font-size:.85rem;transition:transform .15s}
+  details.filters[open] > summary::before{transform:rotate(90deg)}
+  details.filters > summary .samenvatting{font-weight:400;font-size:.82rem;color:var(--muted)}
+  .filterrij{padding:0 24px 18px;border-top:1px solid var(--line);padding-top:16px;margin-top:0}
+  .filterrij:first-of-type{border-top:0}
+  .filterkop{font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+    color:var(--muted);margin-bottom:10px}
+  .secties{display:flex;flex-wrap:wrap;gap:8px}
+  .secties label{display:inline-flex;align-items:center;gap:7px;background:#eef0f6;border-radius:20px;
+    padding:6px 14px;font-size:.85rem;text-transform:none;letter-spacing:0;font-weight:500;
+    color:var(--ink);margin:0;cursor:pointer;user-select:none;border:1px solid transparent}
+  .secties label:has(input:checked){background:#e7e9f7;border-color:#c3c8e8;color:#2a3170}
+  .secties label:has(input:not(:checked)){opacity:.6}
+  .secties input{margin:0;cursor:pointer}
+
+  .zoekveld{position:relative;max-width:420px}
+  .zoekveld input{width:100%;padding:9px 12px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:.9rem}
+  .zoekveld input:disabled{background:#f4f5f8;color:var(--muted)}
+  .opties{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:20;background:#fff;
+    border:1px solid var(--line);border-radius:8px;box-shadow:0 8px 24px rgba(20,25,50,.14);
+    max-height:260px;overflow-y:auto;padding:4px}
+  .opties button{display:block;width:100%;text-align:left;background:none;color:var(--ink);
+    font-weight:400;font-size:.88rem;padding:8px 10px;border-radius:6px}
+  .opties button:hover,.opties button.actief{background:#eef0f6;filter:none}
+  .opties button .sub{color:var(--muted);font-size:.78rem;margin-left:6px}
+  .opties .leeg{padding:10px;font-size:.85rem;color:var(--muted)}
+  .chips{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+  .chips:empty::before{content:"Niemand uitgesloten — het dashboard toont alle collega's.";
+    font-size:.85rem;color:var(--muted)}
+  .chips .chip{background:#fdecea;color:#8c1d18}
+  .chips .chip button{color:#8c1d18}
+  .chips .chip button:hover{background:#f7d4d0}
+
+  .uitleg{margin-top:12px;font-size:.82rem;color:var(--warn);font-weight:500}
+
+  /* signalen */
+  .sig{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .sig .breed{grid-column:1 / -1}
+  @media (max-width:900px){ .sig{grid-template-columns:1fr} .sig .breed{grid-column:auto} }
+  .sc{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fbfcfe}
+  .sc h3{font-size:.85rem;margin-bottom:2px}
+  .sc .regel{font-size:.78rem;color:var(--muted);margin-bottom:10px}
+  .sc ul{list-style:none}
+  .sc li{padding:7px 0;border-bottom:1px solid var(--line);font-size:.88rem;display:flex;
+    justify-content:space-between;gap:12px;align-items:baseline}
+  .sc li:last-child{border-bottom:0}
+  .sc li .w{font-weight:600}
+  .sc li .r{color:var(--muted);font-size:.8rem;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sc .telling{margin-top:10px;padding-top:9px;border-top:1px solid var(--line);font-size:.76rem;color:var(--muted)}
+  .sc .schoon{font-size:.86rem;color:var(--ok);padding:6px 0}
+  .sc.alarm{border-left:4px solid var(--bad)}
+  .sc.let{border-left:4px solid var(--warn)}
+  .sc.rustig{border-left:4px solid var(--ok)}
+  .dagkop{font-weight:700;font-size:.9rem}
+  .dagnamen{color:var(--muted);font-size:.8rem;margin-top:2px}
+
+  /* geladen bestanden */
+  .files{margin-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  .chip{display:inline-flex;align-items:center;gap:8px;background:#eef0f6;border-radius:20px;
+    padding:5px 6px 5px 12px;font-size:.82rem;color:var(--ink)}
+  .chip .n{color:var(--muted);font-size:.76rem}
+  .chip button{background:none;color:var(--muted);border-radius:50%;width:20px;height:20px;padding:0;
+    font-size:1rem;line-height:1;font-weight:400}
+  .chip button:hover{background:#dde1ea;color:var(--bad);filter:none}
+
+  .msg{margin-top:14px;padding:11px 14px;border-radius:8px;font-size:.9rem;display:none}
+  .msg.show{display:block}
+  .msg.ok{background:#e7f5ec;color:#0b6b3a}
+  .msg.err{background:#fdecea;color:#8c1d18}
+  .msg.info{background:#eef0f6;color:#3c4257}
+  .msg.warn{background:#fff5e0;color:#7a4a00}
+
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:14px;margin-bottom:16px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--brand);border-radius:12px;padding:18px 20px}
+  .kpi .l{font-size:.75rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+  .kpi .v{font-size:2rem;font-weight:700;margin-top:6px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .kpi .s{font-size:.82rem;color:var(--muted);margin-top:2px}
+  .kpi.ok{border-left-color:var(--ok)} .kpi.ok .v{color:var(--ok)}
+  .kpi.bad{border-left-color:var(--bad)} .kpi.bad .v{color:var(--bad)}
+  .kpi.neutral{border-left-color:#8a94a6}
+
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px;margin-bottom:16px}
+  .chartbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .chartbox h2,.panel h2{font-size:1rem;margin-bottom:14px}
+  .chartwrap{position:relative;height:300px}
+
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.9rem}
+  th{text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:8px 10px;border-bottom:2px solid var(--line);white-space:nowrap}
+  td{padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  tbody tr:hover{background:#fafbfe}
+  tfoot td{font-weight:700;border-top:2px solid var(--line);border-bottom:0}
+  .rank{color:var(--muted);font-variant-numeric:tabular-nums}
+
+  /* historie */
+  .panelkop{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:14px;flex-wrap:wrap}
+  .panelkop h2{margin-bottom:0}
+  .vglkeuze{display:inline-flex;align-items:center;gap:8px;margin:0;font-size:.82rem;
+    text-transform:none;letter-spacing:0;font-weight:500;color:var(--muted)}
+  .vglkeuze select{width:auto;padding:5px 8px;font-size:.85rem}
+  .hist{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  @media (max-width:900px){ .hist{grid-template-columns:repeat(2,1fr)} }
+  .hp{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fbfcfe}
+  .hp.nu{background:#fff;border-color:#c7cbe0;box-shadow:0 2px 12px rgba(30,39,97,.1)}
+  .hp.leeg{opacity:.55}
+  .hp .wanneer{font-size:.72rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700}
+  .hp .periode{font-size:.9rem;font-weight:600;margin-top:4px}
+  .hp .rate{font-size:1.9rem;font-weight:700;margin-top:10px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .hp .regel{font-size:.82rem;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+  .hp .regel.waarschuwing{color:var(--warn);font-weight:600}
+  .hp .delta{display:inline-block;margin-top:10px;font-size:.78rem;font-weight:600;border-radius:20px;padding:2px 9px}
+  .delta.up{background:#e7f5ec;color:#0b6b3a}
+  .delta.down{background:#fdecea;color:#8c1d18}
+  .delta.flat{background:#eef0f6;color:var(--muted)}
+
+  /* bijzonderheden */
+  .highlights{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px}
+  .hl{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fbfcfe}
+  .hl h3{font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:2px}
+  .hl .sub{font-size:.78rem;color:var(--muted);margin-bottom:12px}
+  .hl ol{list-style:none;counter-reset:r}
+  .hl li{counter-increment:r;display:flex;align-items:baseline;gap:10px;padding:8px 0;border-bottom:1px solid var(--line)}
+  .hl li:last-child{border-bottom:0;padding-bottom:0}
+  .hl li::before{content:counter(r);flex:0 0 22px;height:22px;line-height:22px;text-align:center;border-radius:50%;
+    background:#eef0f6;color:var(--muted);font-size:.75rem;font-weight:700}
+  .hl li.p1::before{background:#fff2c9;color:#8a6100}
+  .hl li.p2::before{background:#eceff3;color:#5a6472}
+  .hl li.p3::before{background:#f6e3d3;color:#8a5326}
+  .hl .who{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:.9rem}
+  .hl .big{font-weight:700;font-variant-numeric:tabular-nums}
+  .hl .aside{font-size:.78rem;color:var(--muted);font-variant-numeric:tabular-nums}
+  .hl .foot{margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:.78rem;color:var(--muted)}
+  .hl .none{font-size:.86rem;color:var(--muted);padding:10px 0}
+  .hl.miss{border-left:4px solid var(--bad)}
+  .hl.rec{border-left:4px solid var(--brand)}
+  .hl.out{border-left:4px solid var(--warn)}
+
+  .empty{background:var(--card);border:1px dashed var(--line);border-radius:14px;padding:56px 24px;text-align:center;color:var(--muted)}
+  .hide{display:none}
+  footer{color:var(--muted);font-size:.8rem;text-align:center;padding:8px 0 20px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <h1>KCC Weekstart Dashboard <span class="build" id="build">build —</span></h1>
+    <p>Upload één of meer maand-exports en kies een willekeurige periode — ook over de maandgrens heen, of een heel jaar. Cijfers komen rechtstreeks uit de <em>Total</em>-regel per dagtabblad.</p>
+  </header>
+
+  <section class="panel">
+    <div class="controls">
+      <div>
+        <label for="file">Excel-export(s)</label>
+        <input type="file" id="file" accept=".xlsx,.xls,.xlsm" multiple>
+      </div>
+      <div>
+        <label for="segment">Segment</label>
+        <select id="segment">
+          <option value="Inbound">Inbound</option>
+          <option value="Outbound">Outbound</option>
+          <option value="Receptie">Receptie calls</option>
+        </select>
+      </div>
+      <div>
+        <label for="from">Datum van</label>
+        <input type="date" id="from">
+      </div>
+      <div>
+        <label for="to">Datum t/m</label>
+        <input type="date" id="to">
+      </div>
+      <div>
+        <button id="run">Maak dashboard</button>
+      </div>
+    </div>
+    <div id="files" class="files hide"></div>
+
+    <div class="normen">
+      <span>Normen:</span>
+      <label>acceptatie ≥ <input type="number" id="nNorm" value="85" min="0" max="100" step="1">%</label>
+      <label>Away ≤ <input type="number" id="nAway" value="1.5" min="0" max="12" step="0.25"> uur</label>
+      <label>Busy ≤ <input type="number" id="nBusy" value="1.5" min="0" max="12" step="0.25"> uur</label>
+      <label>totale presence ≤ <input type="number" id="nTotaal" value="8" min="1" max="24" step="0.5"> uur</label>
+      <label>signaal vanaf <input type="number" id="nDagen" value="3" min="1" max="30" step="1"> dagen</label>
+    </div>
+    <div class="presets" id="presets">
+      <span>Snelkeuze:</span>
+      <button class="ghost" data-preset="all">Alles</button>
+      <button class="ghost" data-preset="lastweek">Vorige week (ma–za)</button>
+      <button class="ghost" data-preset="thisweek">Deze week</button>
+      <button class="ghost" data-preset="month">Deze maand</button>
+      <button id="pptx" class="export" disabled>Exporteer naar PowerPoint</button>
+    </div>
+    <div id="msg" class="msg"></div>
+  </section>
+
+  <details class="panel filters" id="filterPaneel">
+    <summary>Weergave en filters <span id="filterSamenvatting" class="samenvatting"></span></summary>
+
+    <div class="filterrij">
+      <div class="filterkop">Onderdelen</div>
+      <div class="secties" id="secties"></div>
+    </div>
+
+    <div class="filterrij">
+      <div class="filterkop">Collega's uitsluiten</div>
+      <div class="zoekveld">
+        <input type="text" id="zoekCollega" placeholder="Typ een naam om uit te sluiten…" autocomplete="off" disabled>
+        <div class="opties hide" id="zoekOpties"></div>
+      </div>
+      <div class="chips" id="uitgeslotenChips"></div>
+    </div>
+  </details>
+
+  <div id="empty" class="empty">Nog geen dashboard. Upload een bestand, kies een periode en klik op <strong>Maak dashboard</strong>.</div>
+
+  <div id="out" class="hide">
+    <div class="kpis" id="kpis" data-sectie="kpis"></div>
+
+    <div class="panel" data-sectie="historie">
+      <div class="panelkop">
+        <h2 id="histTitle">Vergelijking met de drie voorgaande periodes</h2>
+        <label class="vglkeuze">Vergelijk per
+          <select id="vgl">
+            <option value="auto">automatisch</option>
+            <option value="week">week</option>
+            <option value="maand">maand</option>
+          </select>
+        </label>
+      </div>
+      <div class="hist" id="hist"></div>
+      <div id="histHint" class="uitleg hide"></div>
+    </div>
+
+    <div class="panel" data-sectie="bijzonderheden">
+      <h2>Bijzonderheden</h2>
+      <div class="sig" id="signalen"></div>
+    </div>
+
+    <div class="panel" data-sectie="top3">
+      <h2>Top 3</h2>
+      <div class="highlights" id="highlights"></div>
+    </div>
+
+    <div class="grid2" data-sectie="grafieken">
+      <div class="chartbox">
+        <h2 id="cDailyTitle">Volume per dag</h2>
+        <div class="chartwrap"><canvas id="cDaily"></canvas></div>
+      </div>
+      <div class="chartbox">
+        <h2>Aangenomen vs. gemist (hunts)</h2>
+        <div class="chartwrap"><canvas id="cSplit"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel" data-sectie="perdag">
+      <h2 id="tDaysTitle">Per dag</h2>
+      <div class="tablewrap"><table id="tDays"></table></div>
+    </div>
+
+    <div class="panel" data-sectie="medewerkers">
+      <h2>Medewerkers</h2>
+      <div class="tablewrap"><table id="tAgents"></table></div>
+    </div>
+  </div>
+
+  <footer>
+    Cijfers komen uit de <em>Total</em>-regel van het gekozen blok; ontbreekt die, dan telt de tool de agentregels op.
+    Aangeboden ≠ aangenomen + gemist — een hunt die bij de ene medewerker wegvalt kan door een ander zijn aangenomen.<br>
+    Tabbladen heten <em>DD-MM</em> en bevatten geen jaartal, dus dagen worden op dag en maand gekoppeld: upload geen
+    twee bestanden met dezelfde maand uit verschillende jaren. Tot 31 dagen toont de grafiek per dag, daarna per week, boven de 120 dagen per maand.
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+/* ---------------------------------------------------------------
+   Excel-structuur waar dit op gebouwd is
+   ---------------------------------------------------------------
+   Eén tabblad per dag, naam = "DD-MM" (bv. "17-08").
+   Elk tabblad bevat achter elkaar meerdere blokken:
+     1. (zonder titel, bovenaan)  -> Inbound
+     2. "Outbound DD-MM"
+     3. "Bereikbaarheid DD-MM"    -> presence, geen calls
+     4. "Receptie calls DD-MM"
+   Elk call-blok begint met een kopregel die start met "Agents",
+   daarna agentregels, afgesloten met een regel "Total".
+----------------------------------------------------------------*/
+
+const SEGMENT_MATCHERS = {
+  Outbound:  t => /^outbound/i.test(t),
+  Receptie:  t => /^receptie/i.test(t)
+};
+
+/* Bouwmarkering + zelftest.
+   Staat er rechtsboven iets anders dan onderstaande BUILD, dan draait er een
+   andere versie dan je denkt. De zelftest controleert of de onderdelen die
+   deze build hoort te hebben er ook echt zijn — een half gedeployde of
+   handmatig nagebouwde pagina valt zo meteen door de mand. */
+const BUILD = "2026-08-27g";
+
+window.addEventListener("DOMContentLoaded", () => {
+  const el = document.getElementById("build");
+  const nodig = {
+    "Excel-parser":        typeof splitBlocks === "function" && typeof readDay === "function",
+    "Meerdere bestanden":  typeof rebuildIndex === "function" && typeof bucketize === "function",
+    "Historie":            typeof buildHistory === "function" && typeof previousPeriods === "function",
+    "Signalen":            typeof buildSignals === "function" && typeof readPresence === "function",
+    "Filters":             typeof pasSectiesToe === "function" && typeof pasUitsluitingToe === "function",
+    "Totalen":             typeof computeTotals === "function",
+    "Bijzonderheden":      typeof topLists === "function",
+    "PowerPoint-export":   typeof buildDeck === "function" && typeof buildDeckModel === "function",
+    "SheetJS geladen":     typeof XLSX !== "undefined",
+    "Chart.js geladen":    typeof Chart !== "undefined"
+  };
+  const stuk = Object.keys(nodig).filter(k => !nodig[k]);
+  if (!stuk.length) {
+    el.textContent = "build " + BUILD;
+    el.title = "Alle onderdelen aanwezig.";
+  } else {
+    el.textContent = "build " + BUILD + " · onvolledig";
+    el.className = "build bad";
+    el.title = "Ontbreekt: " + stuk.join(", ");
+    console.warn("KCC dashboard onvolledig — ontbreekt:", stuk);
+  }
+});
+
+/* ---------- weergave en filters ---------- */
+
+const SECTIES = [
+  { id: "kpis",           naam: "Kerncijfers" },
+  { id: "historie",       naam: "Historie" },
+  { id: "bijzonderheden", naam: "Bijzonderheden" },
+  { id: "top3",           naam: "Top 3" },
+  { id: "grafieken",      naam: "Grafieken" },
+  { id: "perdag",         naam: "Per dag/week/maand" },
+  { id: "medewerkers",    naam: "Medewerkers" }
+];
+const zichtbaar = new Set(SECTIES.map(s => s.id));   // alles aan bij de start
+const uitgesloten = new Set();                       // namen in kleine letters
+let bekendeCollegas = [];                            // [{name, calls}] uit de laatste run
+
+let books = [];        // [{name, wb}] — meerdere maandbestanden naast elkaar
+let sheetIndex = [];   // [{name, day, month, bookIdx}] — alle dagtabbladen, over de bestanden heen
+let charts = {};
+let lastRun = null;    // laatst gegenereerde dashboard, input voor de PowerPoint-export
+
+const $ = id => document.getElementById(id);
+const pad = n => String(n).padStart(2, "0");
+
+function say(text, kind) {
+  const el = $("msg");
+  el.textContent = text;
+  el.className = "msg show " + (kind || "info");
+}
+function clearMsg(){ $("msg").className = "msg"; }
+
+/* ---------- helpers ---------- */
+
+// "17-08", "17-8", "17/08", " 17-08 " -> {day,month}
+function parseSheetDate(name) {
+  const m = String(name).trim().match(/^(\d{1,2})\s*[-/.]\s*(\d{1,2})$/);
+  if (!m) return null;
+  const day = +m[1], month = +m[2];
+  if (day < 1 || day > 31 || month < 1 || month > 12) return null;
+  return { day, month };
+}
+
+// Excel-tijd kan een string "00:03:34" zijn of een serieel getal (fractie van een dag)
+function toSeconds(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (typeof v === "number") return v < 1 ? Math.round(v * 86400) : null;
+  const m = String(v).trim().match(/^(\d+):([0-5]?\d):([0-5]?\d)$/);
+  if (!m) return null;
+  return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
+}
+function fmtSeconds(s) {
+  if (s === null || !isFinite(s)) return "–";
+  s = Math.round(s);
+  return pad(Math.floor(s / 3600)) + ":" + pad(Math.floor(s / 60) % 60) + ":" + pad(s % 60);
+}
+function num(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return isFinite(v) ? v : 0;
+  const n = parseFloat(String(v).replace(/\./g, "").replace(",", "."));
+  return isFinite(n) ? n : 0;
+}
+const int = v => Math.round(num(v));
+
+// percentage met Nederlandse komma: 0.8905 -> "89,1%"
+const pct = (x, d) => ((x || 0) * 100).toFixed(d === undefined ? 1 : d).replace(".", ",") + "%";
+
+/* Datums zijn kalenderdagen, geen tijdstippen. toISOString() rekent naar UTC en
+   schuift in Nederland (UTC+1/+2) een dag terug; new Date("2026-08-17") leest
+   juist als UTC-middernacht. Daarom overal deze twee helpers gebruiken. */
+const isoOf   = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const dateOf  = iso => new Date(iso + "T00:00:00");
+const fmtDate = (iso, opt) => dateOf(iso).toLocaleDateString("nl-NL", opt);
+
+/* ---------- parsing ---------- */
+
+// Splits een tabblad in blokken: [{label, headerRow, rows[]}]
+function splitBlocks(rows) {
+  const blocks = [];
+  let current = null;
+  let pendingLabel = "Inbound";   // het eerste blok heeft geen titelregel
+
+  for (const row of rows) {
+    const c0 = row[0] === undefined || row[0] === null ? "" : String(row[0]).trim();
+    const isTitle = c0 && row.slice(1).every(c => c === undefined || c === null || c === "");
+
+    if (isTitle && !/^agents$/i.test(c0) && !/^total$/i.test(c0)) {
+      pendingLabel = c0;          // "Outbound 17-08", "Bereikbaarheid 17-08", ...
+      current = null;
+      continue;
+    }
+    if (/^agents$/i.test(c0)) {   // kopregel -> nieuw blok
+      current = { label: pendingLabel, header: row.map(c => String(c == null ? "" : c).trim()), rows: [], total: null };
+      blocks.push(current);
+      continue;
+    }
+    if (!current) continue;
+    if (/^total$/i.test(c0)) { current.total = row; current = null; continue; }
+    if (c0) current.rows.push(row);
+  }
+  return blocks;
+}
+
+function pickBlock(blocks, segment) {
+  if (segment === "Inbound") {
+    // eerste blok dat géén Outbound/Bereikbaarheid/Receptie is
+    return blocks.find(b => /^inbound$/i.test(b.label)) || null;
+  }
+  const match = SEGMENT_MATCHERS[segment];
+  return blocks.find(b => match(b.label)) || null;
+}
+
+// kolomindex op basis van de kopregel, met vaste fallback
+function colMap(header) {
+  const find = (re, fallback) => {
+    const i = header.findIndex(h => re.test(h));
+    return i === -1 ? fallback : i;
+  };
+  return {
+    agent:    0,
+    volume:   find(/^volume/i, 1),
+    accepted: find(/^accepted/i, 2),
+    missed:   find(/gemist|missed/i, 3),
+    aht:      find(/handling/i, 7),
+    wrap:     find(/wrap/i, 8)
+  };
+}
+
+/* Eén tabblad wordt hoogstens één keer geparseerd, ook al vragen we er drie
+   segmenten uit op. Bij een heel jaar scheelt dat honderden parses. */
+const blockCache = new Map();
+
+function blocksFor(entry) {
+  const key = entry.bookIdx + ":" + entry.name;
+  let blocks = blockCache.get(key);
+  if (!blocks) {
+    const sheet = books[entry.bookIdx].wb.Sheets[entry.name];
+    blocks = splitBlocks(XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: null }));
+    blockCache.set(key, blocks);
+  }
+  return blocks;
+}
+
+function readDay(entry, segment) {
+  const block = pickBlock(blocksFor(entry), segment);
+  if (!block) return null;
+
+  const c = colMap(block.header);
+  const agents = block.rows
+    .filter(r => String(r[c.agent]).trim() !== "")
+    .map(r => ({
+      name: String(r[c.agent]).trim(),
+      volume: int(r[c.volume]),
+      accepted: int(r[c.accepted]),
+      missed: int(r[c.missed]),
+      ahtSec: toSeconds(r[c.aht]),
+      wrapSec: toSeconds(r[c.wrap])
+    }))
+    .filter(a => a.volume > 0 || a.accepted > 0 || a.missed > 0);
+
+  const summed = agents.reduce((acc, a) => ({
+    volume: acc.volume + a.volume,
+    accepted: acc.accepted + a.accepted,
+    missed: acc.missed + a.missed
+  }), { volume: 0, accepted: 0, missed: 0 });
+
+  // Total-regel is leidend; ontbreekt die, dan de som van de agentregels
+  const t = block.total;
+  const totals = t
+    ? { volume: int(t[c.volume]), accepted: int(t[c.accepted]), missed: int(t[c.missed]) }
+    : { ...summed };
+
+  const mismatch = t && (totals.volume !== summed.volume || totals.accepted !== summed.accepted);
+
+  return { agents, totals, summed, mismatch, fromTotalRow: !!t };
+}
+
+/* Het Bereikbaarheid-blok: presence-tijden per medewerker. Geen calls, dus
+   het heeft geen Total-regel en andere kolommen dan de call-blokken. */
+function readPresence(entry) {
+  const block = blocksFor(entry).find(b => /^bereikbaar/i.test(b.label));
+  if (!block) return null;
+
+  const h = block.header;
+  const kol = re => h.findIndex(x => re.test(x));
+  const c = { away: kol(/away/i), avail: kol(/available/i), busy: kol(/busy/i),
+              inCall: kol(/in ?call/i), dnd: kol(/disturb/i) };
+  if (c.away === -1 && c.busy === -1) return null;
+
+  const agents = block.rows.map(r => {
+    const s = i => (i > -1 ? toSeconds(r[i]) : null) || 0;
+    const away = s(c.away), avail = s(c.avail), busy = s(c.busy),
+          inCall = s(c.inCall), dnd = s(c.dnd);
+    return {
+      name: String(r[0]).trim(),
+      away, avail, busy, inCall, dnd,
+      totaal: away + avail + busy + inCall + dnd
+    };
+  }).filter(a => a.name && a.totaal > 0);
+
+  return agents.length ? { agents } : null;
+}
+
+/* ---------- dashboard ---------- */
+
+function collectDays(fromISO, toISO) {
+  const from = new Date(fromISO + "T00:00:00");
+  const to   = new Date(toISO + "T00:00:00");
+  const out = [];
+  for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+    out.push({
+      iso: isoOf(d),
+      label: pad(d.getDate()) + "-" + pad(d.getMonth() + 1),
+      day: d.getDate(),
+      month: d.getMonth() + 1
+    });
+  }
+  return out;
+}
+
+/* Sluit collega's uit een blok. Belangrijk gevolg: de Total-regel uit Excel
+   telt ze nog wél mee, dus zodra er iemand wegvalt kan die regel niet meer
+   leidend zijn. De totalen komen dan uit de overgebleven agentregels. Dat
+   wordt in het dashboard ook zo gemeld. */
+function pasUitsluitingToe(data) {
+  if (!data || !uitgesloten.size) return data;
+  const over = data.agents.filter(a => !uitgesloten.has(a.name.toLowerCase()));
+  if (over.length === data.agents.length) return data;
+
+  const som = over.reduce((acc, a) => ({
+    volume: acc.volume + a.volume,
+    accepted: acc.accepted + a.accepted,
+    missed: acc.missed + a.missed
+  }), { volume: 0, accepted: 0, missed: 0 });
+
+  return { ...data, agents: over, totals: som, mismatch: false, uitAgentregels: true };
+}
+
+function pasUitsluitingPresenceToe(p) {
+  if (!p || !uitgesloten.size) return p;
+  const over = p.agents.filter(a => !uitgesloten.has(a.name.toLowerCase()));
+  return over.length ? { ...p, agents: over } : null;
+}
+
+/* Haalt één periode op uit de geladen bestanden. Gebruikt door het dashboard
+   én door de historievergelijking, zodat beide precies hetzelfde tellen. */
+function collectPeriod(fromISO, toISO, segment) {
+  const days = [];
+  const allDays = [];          // alle segmenten per dag, voor het blok Bijzonderheden
+  const missingSheets = [];
+  const emptySegment = [];
+  let mismatches = 0;
+
+  for (const w of collectDays(fromISO, toISO)) {
+    const entry = sheetIndex.find(s => s.day === w.day && s.month === w.month);
+    if (!entry) { missingSheets.push(w.label); continue; }
+
+    const all = {
+      Inbound:  pasUitsluitingToe(readDay(entry, "Inbound")),
+      Outbound: pasUitsluitingToe(readDay(entry, "Outbound")),
+      Receptie: pasUitsluitingToe(readDay(entry, "Receptie")),
+      Presence: pasUitsluitingPresenceToe(readPresence(entry))
+    };
+    allDays.push({ ...w, all });
+
+    const data = all[segment];
+    if (!data || (data.totals.volume === 0 && data.agents.length === 0)) {
+      emptySegment.push(w.label); continue;
+    }
+    if (data.mismatch) mismatches++;
+    days.push({ ...w, ...data });
+  }
+  return { days, allDays, missingSheets, emptySegment, mismatches };
+}
+
+function build() {
+  clearMsg();
+  const fromISO = $("from").value, toISO = $("to").value, segment = $("segment").value;
+
+  if (!books.length) return say("Upload eerst een of meer Excel-exports.", "err");
+  if (!fromISO || !toISO) return say("Kies een begin- en einddatum.", "err");
+  if (fromISO > toISO) return say("De begindatum ligt na de einddatum.", "err");
+  if (collectDays(fromISO, toISO).length > 400) return say("Kies een periode van maximaal 400 dagen.", "err");
+
+  const { days, allDays, missingSheets, emptySegment, mismatches } = collectPeriod(fromISO, toISO, segment);
+
+  if (!days.length) {
+    return say("Geen data gevonden voor " + segment + " in deze periode. Beschikbare dagen: " +
+               (sheetIndex.map(s => s.name).join(", ") || "geen dagtabbladen herkend") + ".", "err");
+  }
+
+  render(days, segment, fromISO, toISO);
+  renderHighlights(allDays);
+
+  const signals = buildSignals(days, allDays, leesNormen());
+  renderSignals(signals);
+
+  const history = buildHistory(fromISO, toISO, segment, $("vgl").value);
+  renderHistory(history);
+
+  bekendeCollegas = verzamelCollegas(allDays);
+  $("zoekCollega").disabled = false;
+  $("zoekCollega").placeholder = "Typ een naam om uit te sluiten…";
+  pasSectiesToe();
+
+  lastRun = { days, allDays, segment, fromISO, toISO, history, signals,
+              uitgesloten: [...uitgesloten] };
+  $("pptx").disabled = false;
+
+  const notes = [];
+  notes.push(days.length + " " + (days.length === 1 ? "dag" : "dagen") + " verwerkt");
+  if (emptySegment.length) notes.push("geen " + segment + "-blok op: " + emptySegment.join(", "));
+  if (missingSheets.length) notes.push("geen tabblad voor: " + missingSheets.join(", "));
+  if (mismatches) notes.push(mismatches + "× wijkt de Total-regel af van de som van de agentregels (Total is aangehouden)");
+  if (uitgesloten.size) notes.push(uitgesloten.size + (uitgesloten.size === 1 ? " collega" : " collega's") +
+      " uitgesloten — totalen komen uit de overgebleven agentregels, niet uit de Total-regel");
+  say(notes.join(" · "), (missingSheets.length || mismatches || uitgesloten.size) ? "warn" : "ok");
+}
+
+// Periodetotalen + gewogen gemiddelden. Eén bron voor het scherm én de PowerPoint.
+function computeTotals(days) {
+  const volume   = days.reduce((s, d) => s + d.totals.volume, 0);
+  const accepted = days.reduce((s, d) => s + d.totals.accepted, 0);
+  const missed   = days.reduce((s, d) => s + d.totals.missed, 0);
+
+  let ahtNum = 0, ahtDen = 0, wrapNum = 0, wrapDen = 0;
+  for (const d of days) for (const a of d.agents) {
+    if (a.ahtSec !== null && a.accepted) { ahtNum += a.ahtSec * a.accepted; ahtDen += a.accepted; }
+    if (a.wrapSec !== null && a.accepted) { wrapNum += a.wrapSec * a.accepted; wrapDen += a.accepted; }
+  }
+  return {
+    volume, accepted, missed,
+    rate: volume ? accepted / volume : 0,
+    aht:  ahtDen ? ahtNum / ahtDen : null,
+    wrap: wrapDen ? wrapNum / wrapDen : null,
+    perDay: days.length ? Math.round(volume / days.length) : 0
+  };
+}
+
+/* Bij een lange periode wordt per dag onleesbaar: 366 staafjes zegt niets.
+   Tot een maand per dag, tot vier maanden per week, daarboven per maand.
+   Grafiek, tabel en PowerPoint gebruiken alle drie deze indeling. */
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7));          // donderdag van deze week
+  const jan1 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return { jaar: t.getUTCFullYear(), week: Math.ceil(((t - jan1) / 86400000 + 1) / 7) };
+}
+
+function bucketize(days) {
+  const modus = days.length <= 31 ? "dag" : (days.length <= 120 ? "week" : "maand");
+
+  if (modus === "dag") {
+    // Loopt de periode over de maandgrens, dan moet de maand in het korte label:
+    // "di 1" en "do 3" zijn anders niet te plaatsen.
+    const overMaanden = new Set(days.map(d => d.iso.slice(0, 7))).size > 1;
+    return {
+      modus,
+      kop: "Dag",
+      rijen: days.map(d => ({
+        key: d.iso,
+        label: fmtDate(d.iso, { weekday: "short", day: "numeric", month: "short" }),
+        kort:  fmtDate(d.iso, overMaanden ? { day: "numeric", month: "short" } : { weekday: "short", day: "numeric" }),
+        volume: d.totals.volume, accepted: d.totals.accepted, missed: d.totals.missed, dagen: 1
+      }))
+    };
+  }
+
+  const groepen = new Map();
+  for (const d of days) {
+    const dt = dateOf(d.iso);
+    let key, label, kort;
+    if (modus === "week") {
+      const w = isoWeek(dt);
+      key = w.jaar + "-W" + pad(w.week);
+      label = "week " + w.week;
+      kort  = "wk " + w.week;
+    } else {
+      key = d.iso.slice(0, 7);
+      label = dt.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+      kort  = dt.toLocaleDateString("nl-NL", { month: "short" });
+    }
+    let g = groepen.get(key);
+    if (!g) { g = { key, label, kort, volume: 0, accepted: 0, missed: 0, dagen: 0 }; groepen.set(key, g); }
+    g.volume += d.totals.volume; g.accepted += d.totals.accepted; g.missed += d.totals.missed; g.dagen++;
+  }
+  return {
+    modus,
+    kop: modus === "week" ? "Week" : "Maand",
+    rijen: [...groepen.values()].sort((a, b) => a.key < b.key ? -1 : 1)
+  };
+}
+
+/* ---------- historie ---------- */
+
+// Hele kalendermaand? Dan stapt de vergelijking per maand terug in plaats van per dag.
+function isWholeMonth(fromISO, toISO) {
+  const a = dateOf(fromISO), b = dateOf(toISO);
+  if (a.getFullYear() !== b.getFullYear() || a.getMonth() !== b.getMonth()) return false;
+  const laatste = new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate();
+  return a.getDate() === 1 && b.getDate() === laatste;
+}
+
+/* De n voorgaande periodes, oudste eerst.
+   - hele maand      -> de voorgaande kalendermaanden
+   - t/m 7 dagen     -> stappen van 7 dagen, zodat ma–za op ma–za blijft vallen
+   - langer          -> aaneengesloten blokken van dezelfde lengte           */
+function previousPeriods(fromISO, toISO, aantal) {
+  const lengte = Math.round((dateOf(toISO) - dateOf(fromISO)) / 86400000) + 1;
+  const perMaand = isWholeMonth(fromISO, toISO);
+  const stap = lengte <= 7 ? 7 : lengte;
+  const uit = [];
+
+  for (let i = 1; i <= aantal; i++) {
+    if (perMaand) {
+      const a = dateOf(fromISO);
+      uit.push({
+        van: isoOf(new Date(a.getFullYear(), a.getMonth() - i, 1)),
+        tot: isoOf(new Date(a.getFullYear(), a.getMonth() - i + 1, 0))
+      });
+    } else {
+      const a = dateOf(fromISO), b = dateOf(toISO);
+      a.setDate(a.getDate() - stap * i);
+      b.setDate(b.getDate() - stap * i);
+      uit.push({ van: isoOf(a), tot: isoOf(b) });
+    }
+  }
+  return uit.reverse();
+}
+
+/* Welke vier kolommen worden vergeleken?
+   auto  — de gekozen periode plus drie even lange blokken ervoor
+   week  — de week waarin de einddatum valt, plus de drie weken ervoor
+   maand — de maand waarin de einddatum valt, plus de drie maanden ervoor
+
+   Week en maand bestaan omdat "gelijke lengte" onbruikbaar wordt zodra je een
+   lange periode kiest: bij een selectie van twee maanden liggen de drie
+   voorgaande blokken een half jaar terug, meestal buiten de geladen bestanden. */
+function vergelijkingsPlan(fromISO, toISO, modus) {
+  /* Automatisch kiezen. Bij een lange, niet-maandgebonden selectie zijn drie
+     even lange blokken ervóór zelden bruikbaar: bij twee maanden liggen ze een
+     half jaar terug. Dan zijn de laatste vier weken informatiever. */
+  if (!modus || modus === "auto") {
+    const lengte = Math.round((dateOf(toISO) - dateOf(fromISO)) / 86400000) + 1;
+    if (isWholeMonth(fromISO, toISO)) modus = "autoMaand";
+    else if (lengte > 31) modus = "week";
+    else modus = "autoBlok";
+  }
+
+  if (modus === "week" || modus === "maand") {
+    const eind = dateOf(toISO);
+    const kolommen = [];
+
+    for (let i = 3; i >= 0; i--) {
+      if (modus === "week") {
+        const ma = new Date(eind);
+        ma.setDate(ma.getDate() - ((ma.getDay() + 6) % 7) - i * 7);   // maandag
+        const zo = new Date(ma); zo.setDate(zo.getDate() + 6);
+        kolommen.push({ van: isoOf(ma), tot: isoOf(zo), huidig: i === 0,
+                        naam: i === 0 ? "laatste week" : i + (i === 1 ? " week terug" : " weken terug") });
+      } else {
+        const start = new Date(eind.getFullYear(), eind.getMonth() - i, 1);
+        const stop  = new Date(eind.getFullYear(), eind.getMonth() - i + 1, 0);
+        kolommen.push({ van: isoOf(start), tot: isoOf(stop), huidig: i === 0,
+                        naam: i === 0 ? "laatste maand" : i + (i === 1 ? " maand terug" : " maanden terug") });
+      }
+    }
+    return {
+      kolommen, modus,
+      titel: modus === "week" ? "Vergelijking per week" : "Vergelijking per maand",
+      noot: modus === "week"
+        ? "Vier kalenderweken (ma t/m zo), eindigend in de week van je einddatum."
+        : "Vier kalendermaanden, eindigend in de maand van je einddatum."
+    };
+  }
+
+  const perMaand = modus === "autoMaand";
+  const namen = ["3 periodes terug", "2 periodes terug", "vorige periode", "deze periode"];
+  const kolommen = previousPeriods(fromISO, toISO, 3)
+    .map((p, i) => ({ ...p, naam: namen[i] }));
+  kolommen.push({ van: fromISO, tot: toISO, huidig: true, naam: namen[3] });
+
+  const lengte = Math.round((dateOf(toISO) - dateOf(fromISO)) / 86400000) + 1;
+  return {
+    kolommen, modus: "auto",
+    titel: perMaand ? "Vergelijking met de drie voorgaande maanden"
+                    : "Vergelijking met de drie voorgaande periodes",
+    noot: perMaand
+      ? "Elke kolom is een hele kalendermaand."
+      : "Elke kolom beslaat " + lengte + (lengte === 1 ? " dag" : " dagen") +
+        ", even lang als de gekozen periode" + (lengte <= 7 ? " en op dezelfde weekdagen." : ".")
+  };
+}
+
+/* Bouwt de vier kolommen. Periodes zonder data blijven staan, gemarkeerd als
+   leeg — een gat is informatie, geen reden om de vergelijking te verzwijgen. */
+function buildHistory(fromISO, toISO, segment, modus) {
+  const plan = vergelijkingsPlan(fromISO, toISO, modus);
+
+  const reeks = plan.kolommen.map(k => {
+    const { days } = collectPeriod(k.van, k.tot, segment);
+    return {
+      van: k.van, tot: k.tot, naam: k.naam, huidig: !!k.huidig,
+      label: periodLabel(k.van, k.tot),
+      kort: fmtDate(k.van, { day: "numeric", month: "short" }),
+      dagen: days.length,
+      leeg: !days.length,
+      totals: days.length ? computeTotals(days) : { volume: 0, accepted: 0, missed: 0, rate: 0 }
+    };
+  });
+
+  /* Een periode met minder dagen data is niet vergelijkbaar: één zaterdag met
+     46 calls naast een volle week van 4.000 zegt niets over een trend. Zulke
+     periodes tellen niet mee als vergelijkingsbasis en gaan niet in de grafiek.
+     De langste kolom is de maatstaf. */
+  const basisDagen = Math.max(...reeks.map(p => p.dagen), 0);
+  for (const p of reeks) p.onvolledig = !p.leeg && p.dagen < basisDagen;
+
+  let basis = null;
+  for (const p of reeks) {
+    const vergelijkbaar = !p.leeg && !p.onvolledig;
+    p.deltaVolume = (vergelijkbaar && basis) ? p.totals.volume - basis.totals.volume : null;
+    p.deltaRate   = (vergelijkbaar && basis) ? p.totals.rate   - basis.totals.rate   : null;
+    if (vergelijkbaar) basis = p;
+  }
+
+  reeks.plan = plan;
+  reeks.basisDagen = basisDagen;
+  return reeks;
+}
+
+function periodLabel(fromISO, toISO) {
+  const a = dateOf(fromISO), b = dateOf(toISO);
+  const long = d => d.toLocaleDateString("nl-NL", { day: "numeric", month: "long" });
+  if (fromISO === toISO) return long(a);
+  // zelfde maand: "17 t/m 22 augustus", anders "28 juli t/m 3 augustus"
+  return a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()
+    ? a.getDate() + " t/m " + long(b)
+    : long(a) + " t/m " + long(b);
+}
+
+// Medewerkers van het gekozen segment, opgeteld over de periode.
+function agentTable(days) {
+  const m = new Map();
+  for (const d of days) for (const a of d.agents) {
+    let e = m.get(a.name);
+    if (!e) { e = { name: a.name, volume: 0, accepted: 0, missed: 0, days: 0, ahtNum: 0, ahtDen: 0 }; m.set(a.name, e); }
+    e.volume += a.volume; e.accepted += a.accepted; e.missed += a.missed; e.days++;
+    if (a.ahtSec !== null && a.accepted) { e.ahtNum += a.ahtSec * a.accepted; e.ahtDen += a.accepted; }
+  }
+  return [...m.values()]
+    .map(a => ({ ...a, aht: a.ahtDen ? a.ahtNum / a.ahtDen : null, rate: a.volume ? a.accepted / a.volume : 0 }))
+    .sort((a, b) => b.accepted - a.accepted);
+}
+
+function render(days, segment, fromISO, toISO) {
+  $("empty").classList.add("hide");
+  $("out").classList.remove("hide");
+
+  const t = computeTotals(days);
+  const volume = t.volume, accepted = t.accepted, missed = t.missed, rate = t.rate;
+  const aht = t.aht, wrap = t.wrap;
+
+  const nl = n => n.toLocaleString("nl-NL");
+  const period = periodLabel(fromISO, toISO);
+
+  $("kpis").innerHTML = `
+    <div class="kpi"><div class="l">${segment} · aangeboden</div><div class="v">${nl(volume)}</div><div class="s">${period}</div></div>
+    <div class="kpi ok"><div class="l">Aangenomen</div><div class="v">${nl(accepted)}</div><div class="s">${pct(rate)} acceptatie</div></div>
+    <div class="kpi bad"><div class="l">Gemist</div><div class="v">${nl(missed)}</div><div class="s">${pct(volume ? missed/volume : 0)} van aangeboden</div></div>
+    <div class="kpi neutral"><div class="l">Gem. handling time</div><div class="v">${fmtSeconds(aht)}</div><div class="s">wrap-up ${fmtSeconds(wrap)}</div></div>
+    <div class="kpi neutral"><div class="l">Dagen met data</div><div class="v">${days.length}</div><div class="s">gem. ${nl(Math.round(volume/days.length))} calls/dag</div></div>`;
+
+  /* per dag / week / maand */
+  const buckets = bucketize(days);
+  $("tDaysTitle").textContent = buckets.modus === "dag" ? "Per dag"
+                              : buckets.modus === "week" ? "Per week" : "Per maand";
+  $("tDays").innerHTML = `
+    <thead><tr>
+      <th>${buckets.kop}</th><th class="num">Aangeboden</th><th class="num">Aangenomen</th>
+      <th class="num">Gemist</th><th class="num">Acceptatie</th>
+      <th class="num">${buckets.modus === "dag" ? "Medewerkers" : "Dagen"}</th>
+    </tr></thead>
+    <tbody>${buckets.rijen.map((b, i) => `
+      <tr>
+        <td>${b.label}</td>
+        <td class="num">${nl(b.volume)}</td>
+        <td class="num">${nl(b.accepted)}</td>
+        <td class="num">${nl(b.missed)}</td>
+        <td class="num">${pct(b.volume ? b.accepted/b.volume : 0)}</td>
+        <td class="num">${buckets.modus === "dag" ? days[i].agents.length : b.dagen}</td>
+      </tr>`).join("")}</tbody>
+    <tfoot><tr>
+      <td>Totaal</td><td class="num">${nl(volume)}</td><td class="num">${nl(accepted)}</td>
+      <td class="num">${nl(missed)}</td><td class="num">${pct(rate)}</td>
+      <td class="num">${buckets.modus === "dag" ? "" : days.length}</td>
+    </tr></tfoot>`;
+
+  /* per medewerker */
+  const agents = agentTable(days);
+
+  $("tAgents").innerHTML = `
+    <thead><tr>
+      <th>#</th><th>Medewerker</th><th class="num">Aangeboden</th><th class="num">Aangenomen</th>
+      <th class="num">Gemist</th><th class="num">Acceptatie</th><th class="num">Gem. AHT</th><th class="num">Dagen</th>
+    </tr></thead>
+    <tbody>${agents.map((a, i) => `
+      <tr>
+        <td class="rank">${i + 1}</td>
+        <td>${a.name.replace(/@.*$/, "")}</td>
+        <td class="num">${nl(a.volume)}</td>
+        <td class="num">${nl(a.accepted)}</td>
+        <td class="num">${nl(a.missed)}</td>
+        <td class="num">${pct(a.volume ? a.accepted/a.volume : 0)}</td>
+        <td class="num">${fmtSeconds(a.aht)}</td>
+        <td class="num">${a.days}</td>
+      </tr>`).join("")}</tbody>`;
+
+  drawCharts(buckets, accepted, missed);
+}
+
+/* ---------- signalen (blok Bijzonderheden) ---------- */
+
+function leesNormen() {
+  const g = (id, standaard) => {
+    const v = parseFloat($(id).value.replace(",", "."));
+    return isFinite(v) && v >= 0 ? v : standaard;
+  };
+  return {
+    norm:      g("nNorm", 85) / 100,
+    maxAway:   g("nAway", 1.5) * 3600,
+    maxBusy:   g("nBusy", 1.5) * 3600,
+    maxTotaal: g("nTotaal", 8) * 3600,
+    minDagen:  Math.max(1, Math.round(g("nDagen", 3))),
+    minVolume: 10,          // onder de 10 aangeboden calls zegt een percentage niets
+    minCollegas: 3          // "meerdere collega's" op één dag
+  };
+}
+
+/* Zoekt terugkerende patronen, geen incidenten: een medewerker verschijnt pas
+   in een lijst als het op minstens `minDagen` dagen misging. */
+function buildSignals(days, allDays, o) {
+  /* 1. dagen waarop het bij meerdere collega's tegelijk misging */
+  const totVol = days.reduce((s, d) => s + d.totals.volume, 0);
+  const totMis = days.reduce((s, d) => s + d.totals.missed, 0);
+  const gemMiss = totVol ? totMis / totVol : 0;
+
+  const drukkeDagen = days.map(d => {
+    const onder = d.agents
+      .filter(a => a.volume >= o.minVolume && a.accepted / a.volume < o.norm)
+      .map(a => ({ name: a.name, rate: a.accepted / a.volume, missed: a.missed }))
+      .sort((a, b) => a.rate - b.rate);
+    return {
+      iso: d.iso,
+      label: fmtDate(d.iso, { weekday: "long", day: "numeric", month: "long" }),
+      kort: fmtDate(d.iso, { weekday: "short", day: "numeric", month: "short" }),
+      missed: d.totals.missed,
+      rate: d.totals.volume ? d.totals.missed / d.totals.volume : 0,
+      onder
+    };
+  }).filter(d => d.onder.length >= o.minCollegas && d.rate > gemMiss)
+    .sort((a, b) => b.onder.length - a.onder.length || b.missed - a.missed);
+
+  /* 2-4. bereikbaarheid: per medewerker tellen op hoeveel dagen het misging */
+  const tellers = { away: new Map(), busy: new Map(), lang: new Map() };
+  const gewerkt = new Map();          // dagen dat iemand überhaupt in het presence-blok staat
+  let dagenMetPresence = 0;
+
+  for (const d of allDays) {
+    const p = d.all.Presence;
+    if (!p) continue;
+    dagenMetPresence++;
+    for (const a of p.agents) {
+      gewerkt.set(a.name, (gewerkt.get(a.name) || 0) + 1);
+      const noteer = (m, waarde) => {
+        let e = m.get(a.name);
+        if (!e) { e = { name: a.name, keer: 0, hoogste: 0, hoogsteDag: null }; m.set(a.name, e); }
+        e.keer++;
+        if (waarde > e.hoogste) { e.hoogste = waarde; e.hoogsteDag = d.iso; }
+      };
+      if (a.away   > o.maxAway)   noteer(tellers.away, a.away);
+      if (a.busy   > o.maxBusy)   noteer(tellers.busy, a.busy);
+      if (a.totaal > o.maxTotaal) noteer(tellers.lang, a.totaal);
+    }
+  }
+
+  const lijst = m => [...m.values()]
+    .map(e => ({ ...e, van: gewerkt.get(e.name) || 0 }))
+    .filter(e => e.keer >= o.minDagen)
+    .sort((a, b) => b.keer - a.keer || b.hoogste - a.hoogste);
+
+  return {
+    drukkeDagen, gemMiss,
+    away: lijst(tellers.away),
+    busy: lijst(tellers.busy),
+    lang: lijst(tellers.lang),
+    collegas: gewerkt.size,
+    dagenMetPresence,
+    geenPresence: dagenMetPresence === 0,
+    opties: o
+  };
+}
+
+function renderSignals(sig) {
+  const o = sig.opties;
+  const uur = s => (s / 3600).toFixed(1).replace(".", ",") + " uur";
+
+  const kaart = (cls, titel, regel, inhoud, telling) => `
+    <div class="sc ${cls}">
+      <h3>${titel}</h3>
+      <div class="regel">${regel}</div>
+      ${inhoud}
+      ${telling ? `<div class="telling">${telling}</div>` : ""}
+    </div>`;
+
+  const persoonsLijst = (rijen, waardeTekst) => rijen.length
+    ? `<ul>${rijen.slice(0, 5).map(e => `
+        <li><span class="w">${shortName(e.name)}</span>
+            <span class="r">${e.keer} van ${e.van} dagen · hoogste ${fmtSeconds(e.hoogste)}${
+              e.hoogsteDag ? " (" + fmtDate(e.hoogsteDag, { day: "numeric", month: "short" }) + ")" : ""}</span></li>`
+        ).join("")}</ul>`
+    : `<div class="schoon">${waardeTekst}</div>`;
+
+  /* 1. drukke dagen */
+  const dagen = sig.drukkeDagen.length
+    ? `<ul>${sig.drukkeDagen.slice(0, 4).map(d => `
+        <li><span>
+          <span class="dagkop">${d.label}</span>
+          <div class="dagnamen">${d.onder.slice(0, 6).map(a => shortName(a.name) + " " + pct(a.rate)).join(" · ")}${
+            d.onder.length > 6 ? " · +" + (d.onder.length - 6) + " meer" : ""}</div>
+        </span>
+        <span class="r">${d.onder.length} collega's<br>${d.missed} gemist · ${pct(d.rate)}</span></li>`
+      ).join("")}</ul>`
+    : `<div class="schoon">Geen dag waarop ${o.minCollegas} of meer collega's tegelijk onder de norm bleven.</div>`;
+
+  const kaarten = [
+    kaart("breed " + (sig.drukkeDagen.length ? "alarm" : "rustig"),
+      "Dagen met veel gemiste oproepen",
+      `Dagen waarop minstens ${o.minCollegas} collega's onder de ${pct(o.norm, 0)} acceptatie bleven én de dag zelf
+       slechter was dan het periodegemiddelde van ${pct(sig.gemMiss)} gemist. Collega's met minder dan
+       ${o.minVolume} aangeboden calls tellen niet mee.`,
+      dagen,
+      sig.drukkeDagen.length ? sig.drukkeDagen.length + " van de dagen in deze periode" : "")
+  ];
+
+  if (sig.geenPresence) {
+    kaarten.push(kaart("breed let", "Bereikbaarheid",
+      "Geen Bereikbaarheid-blok gevonden in de dagtabbladen van deze periode.",
+      `<div class="regel">Zonder dat blok kan de tool niets zeggen over Away, Busy of de totale ingelogde tijd.</div>`, ""));
+  } else {
+    kaarten.push(
+      kaart(sig.away.length ? "let" : "rustig", "Vaak lang op Away",
+        `Meer dan ${uur(o.maxAway)} op Away, op minstens ${o.minDagen} dagen.`,
+        persoonsLijst(sig.away, "Niemand komt er structureel boven."),
+        `${sig.away.length} van ${sig.collegas} collega's`),
+
+      kaart(sig.busy.length ? "let" : "rustig", "Vaak lang op Busy",
+        `Meer dan ${uur(o.maxBusy)} op Busy, op minstens ${o.minDagen} dagen.`,
+        persoonsLijst(sig.busy, "Niemand komt er structureel boven."),
+        `${sig.busy.length} van ${sig.collegas} collega's`),
+
+      kaart(sig.lang.length ? "alarm" : "rustig", "Teams niet af- of opgestart",
+        `Totale presence boven ${uur(o.maxTotaal)} op minstens ${o.minDagen} dagen — langer dan een werkdag
+         op een status, dus waarschijnlijk niet correct afgesloten.`,
+        persoonsLijst(sig.lang, "Niemand staat structureel langer ingelogd dan de norm."),
+        `${sig.lang.length} van ${sig.collegas} collega's`)
+    );
+  }
+
+  $("signalen").innerHTML = kaarten.join("");
+}
+
+/* ---------- top 3 ---------- */
+
+// Telt alle agentregels van één segment op over de gekozen periode.
+function aggregate(allDays, segment) {
+  const m = new Map();
+  let days = 0;
+  for (const d of allDays) {
+    const s = d.all[segment];
+    if (!s || !s.agents.length) continue;
+    days++;
+    for (const a of s.agents) {
+      let e = m.get(a.name);
+      if (!e) { e = { name: a.name, volume: 0, accepted: 0, missed: 0, days: 0 }; m.set(a.name, e); }
+      e.volume += a.volume; e.accepted += a.accepted; e.missed += a.missed; e.days++;
+    }
+  }
+  return { rows: [...m.values()], days };
+}
+
+function shortName(email) {
+  return String(email).replace(/@.*$/, "");
+}
+
+function hlCard(cls, title, sub, items, footer) {
+  const body = items.length
+    ? `<ol>${items.map((it, i) => `
+        <li class="p${i + 1}">
+          <span class="who" title="${it.name}">${shortName(it.name)}</span>
+          <span class="big">${it.big}</span>
+          <span class="aside">${it.aside}</span>
+        </li>`).join("")}</ol>`
+    : `<div class="none">Geen data in deze periode.</div>`;
+  return `<div class="hl ${cls}">
+      <h3>${title}</h3>
+      <div class="sub">${sub}</div>
+      ${body}
+      ${footer ? `<div class="foot">${footer}</div>` : ""}
+    </div>`;
+}
+
+// De drie top 3-lijsten. Eén bron voor het scherm én de PowerPoint.
+function topLists(allDays) {
+  const nl = n => n.toLocaleString("nl-NL");
+  const dagen = n => n + (n === 1 ? " dag" : " dagen");
+
+  const inb = aggregate(allDays, "Inbound");
+  const rec = aggregate(allDays, "Receptie");
+  const out = aggregate(allDays, "Outbound");
+
+  return {
+    missed: {
+      title: "Top 3 gemiste hunts", sub: "Inbound",
+      items: inb.rows
+        .filter(a => a.missed > 0)
+        .sort((a, b) => b.missed - a.missed || b.volume - a.volume)
+        .slice(0, 3)
+        .map(a => ({
+          name: a.name, value: a.missed,
+          big: nl(a.missed) + " gemist",
+          aside: a.volume ? pct(a.accepted / a.volume) + " acceptatie" : ""
+        })),
+      foot: nl(inb.rows.reduce((s, a) => s + a.missed, 0)) + " gemiste hunts totaal over " + dagen(inb.days)
+    },
+    receptie: {
+      title: "Top 3 receptie calls", sub: "Aangenomen receptie calls",
+      items: rec.rows
+        .sort((a, b) => b.accepted - a.accepted || b.volume - a.volume)
+        .slice(0, 3)
+        .map(a => ({
+          name: a.name, value: a.accepted,
+          big: nl(a.accepted) + " calls",
+          aside: a.missed ? nl(a.missed) + " gemist" : "0 gemist"
+        })),
+      foot: nl(rec.rows.reduce((s, a) => s + a.accepted, 0)) + " receptie calls aangenomen op " + dagen(rec.days)
+    },
+    outbound: {
+      title: "Top 3 outbound", sub: "Aangenomen outbound calls",
+      items: out.rows
+        .sort((a, b) => b.accepted - a.accepted || b.volume - a.volume)
+        .slice(0, 3)
+        .map(a => ({
+          name: a.name, value: a.accepted,
+          big: nl(a.accepted) + " calls",
+          aside: dagen(a.days)
+        })),
+      foot: nl(out.rows.reduce((s, a) => s + a.accepted, 0)) + " outbound calls op " + dagen(out.days)
+    }
+  };
+}
+
+function renderHistory(reeks) {
+  const nl = n => n.toLocaleString("nl-NL");
+
+  $("histTitle").textContent = reeks.plan.titel;
+
+  /* Vallen de vergelijkingsperiodes buiten de bestanden, zeg dan wat je kunt doen
+     in plaats van drie grijze vakjes te tonen. */
+  const legeEerder = reeks.filter(p => !p.huidig && p.leeg).length;
+  const hint = $("histHint");
+  if (legeEerder === 3 && reeks.plan.modus === "auto") {
+    hint.textContent = "De drie voorgaande periodes van deze lengte vallen buiten je geladen bestanden. " +
+      "Zet \"Vergelijk per\" op week of maand, of kies een kortere periode.";
+    hint.classList.remove("hide");
+  } else if (legeEerder) {
+    hint.textContent = legeEerder + (legeEerder === 1 ? " periode zit" : " periodes zitten") +
+      " niet in je geladen bestanden. Upload de bijbehorende maand om de vergelijking compleet te maken.";
+    hint.classList.remove("hide");
+  } else {
+    hint.classList.add("hide");
+  }
+
+  $("hist").innerHTML = reeks.map(p => {
+    if (p.leeg) {
+      return `<div class="hp leeg">
+        <div class="wanneer">${p.naam}</div>
+        <div class="periode">${p.label}</div>
+        <div class="rate">–</div>
+        <div class="regel">geen data in de geladen bestanden</div>
+      </div>`;
+    }
+    const d = p.deltaRate;
+    const chip = d === null ? ""
+      : `<span class="delta ${Math.abs(d) < 0.002 ? "flat" : d > 0 ? "up" : "down"}">${
+          d > 0 ? "+" : d < 0 ? "−" : "±"}${pct(Math.abs(d)).replace("%","")}-punt</span>`;
+    return `<div class="hp ${p.huidig ? "nu" : ""}">
+      <div class="wanneer">${p.naam}</div>
+      <div class="periode">${p.label}</div>
+      <div class="rate">${pct(p.totals.rate)}</div>
+      <div class="regel">${nl(p.totals.accepted)} van ${nl(p.totals.volume)} · ${nl(p.totals.missed)} gemist</div>
+      <div class="regel ${p.onvolledig ? "waarschuwing" : ""}">${
+        p.onvolledig ? "maar " + p.dagen + " van " + reeks.basisDagen + " dagen — niet vergelijkbaar"
+                     : p.dagen + " " + (p.dagen === 1 ? "dag" : "dagen") + " met data"}</div>
+      ${chip}
+    </div>`;
+  }).join("");
+}
+
+function renderHighlights(allDays) {
+  const t = topLists(allDays);
+  $("highlights").innerHTML =
+    hlCard("miss", t.missed.title,   t.missed.sub,   t.missed.items,   t.missed.foot) +
+    hlCard("rec",  t.receptie.title, t.receptie.sub, t.receptie.items, t.receptie.foot) +
+    hlCard("out",  t.outbound.title, t.outbound.sub, t.outbound.items, t.outbound.foot);
+}
+
+/* ==== DECK START ====  (wordt 1-op-1 getest met een node-harnas) */
+
+const DECK = {
+  navy:  "1E2761",   // dominant
+  ink:   "10163A",   // donkerder navy voor titel/slot
+  ice:   "CADCFC",   // ondersteunend
+  paper: "FFFFFF",
+  mist:  "F4F6FB",
+  grey:  "6B7280",
+  line:  "DFE4EE",
+  green: "2FA36B",
+  red:   "E5484D",
+  amber: "E08D2F",
+  head:  "Cambria",
+  body:  "Calibri"
+};
+
+function deckSecs(s) {
+  if (s === null || s === undefined || !isFinite(s)) return "–";
+  s = Math.round(s);
+  const p = n => String(n).padStart(2, "0");
+  return p(Math.floor(s / 3600)) + ":" + p(Math.floor(s / 60) % 60) + ":" + p(s % 60);
+}
+const deckNum   = n => Number(n).toLocaleString("nl-NL");
+const deckShort = e => String(e).replace(/@.*$/, "");
+
+// Rond genummerd badge-motief: keert terug op elke inhoudelijke slide.
+function badge(slide, n, x, y, size, fill, textColor) {
+  slide.addShape("ellipse", { x, y, w: size, h: size, fill: { color: fill } });
+  slide.addText(String(n), {
+    x, y, w: size, h: size, isTextBox: true, margin: 0,
+    align: "center", valign: "middle",
+    fontFace: DECK.body, fontSize: 11, bold: true, color: textColor
+  });
+}
+
+function slideTitle(slide, text, kicker) {
+  if (kicker) {
+    slide.addText(kicker.toUpperCase(), {
+      x: 0.6, y: 0.42, w: 9, h: 0.25, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 11, bold: true, charSpacing: 2, color: DECK.grey
+    });
+  }
+  slide.addText(text, {
+    x: 0.6, y: kicker ? 0.68 : 0.5, w: 9, h: 0.55, isTextBox: true, margin: 0,
+    fontFace: DECK.head, fontSize: 30, bold: true, color: DECK.navy
+  });
+}
+
+// Alleen het kaartje; tekst zet de aanroeper er zelf op.
+function slideCard(slide, o) {
+  slide.addShape("roundRect", {
+    x: o.x, y: o.y, w: o.w, h: o.h, rectRadius: 0.08,
+    fill: { color: o.fill || DECK.mist },
+    line: { color: o.fill ? o.fill : DECK.line, width: 1 },
+    shadow: { type: "outer", color: "9AA3B5", blur: 8, offset: 1, angle: 90, opacity: 0.18 }
+  });
+}
+
+function statCard(slide, o) {
+  slideCard(slide, o);
+  slide.addText(o.label.toUpperCase(), {
+    x: o.x + 0.22, y: o.y + 0.2, w: o.w - 0.44, h: 0.25, isTextBox: true, margin: 0,
+    fontFace: DECK.body, fontSize: 9.5, bold: true, charSpacing: 1.2,
+    color: o.labelColor || DECK.grey
+  });
+  slide.addText(String(o.value), {
+    x: o.x + 0.22, y: o.y + 0.46, w: o.w - 0.44, h: 0.72, isTextBox: true, margin: 0,
+    fontFace: DECK.head, fontSize: o.valueSize || 34, bold: true,
+    color: o.valueColor || DECK.navy
+  });
+  if (o.note) {
+    slide.addText(o.note, {
+      x: o.x + 0.22, y: o.y + o.h - 0.44, w: o.w - 0.44, h: 0.3, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 10.5, color: o.noteColor || DECK.grey
+    });
+  }
+}
+
+// Eén top 3-kaart: kop, drie genummerde regels, voetnoot.
+function topCard(slide, o) {
+  slide.addShape("roundRect", {
+    x: o.x, y: o.y, w: o.w, h: o.h, rectRadius: 0.08,
+    fill: { color: DECK.paper }, line: { color: DECK.line, width: 1 },
+    shadow: { type: "outer", color: "9AA3B5", blur: 10, offset: 2, angle: 90, opacity: 0.2 }
+  });
+  slide.addShape("ellipse", { x: o.x + 0.22, y: o.y + 0.24, w: 0.3, h: 0.3, fill: { color: o.accent } });
+  slide.addText(o.title, {
+    x: o.x + 0.6, y: o.y + 0.22, w: o.w - 0.8, h: 0.34, isTextBox: true, margin: 0, valign: "middle",
+    fontFace: DECK.head, fontSize: 14, bold: true, color: DECK.navy
+  });
+  slide.addText(o.sub, {
+    x: o.x + 0.22, y: o.y + 0.6, w: o.w - 0.44, h: 0.24, isTextBox: true, margin: 0,
+    fontFace: DECK.body, fontSize: 10, color: DECK.grey
+  });
+
+  const rowH = 0.62, top = o.y + 0.95;
+  if (!o.items.length) {
+    slide.addText("Geen data in deze periode.", {
+      x: o.x + 0.22, y: top, w: o.w - 0.44, h: 0.4, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 11, italic: true, color: DECK.grey
+    });
+  }
+  o.items.forEach((it, i) => {
+    const y = top + i * rowH;
+    badge(slide, i + 1, o.x + 0.22, y + 0.06, 0.28, i === 0 ? o.accent : DECK.ice,
+          i === 0 ? DECK.paper : DECK.navy);
+    slide.addText(deckShort(it.name), {
+      x: o.x + 0.58, y: y, w: o.w - 0.8, h: 0.26, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 11.5, bold: true, color: DECK.navy
+    });
+    slide.addText(it.big + (it.aside ? "   ·   " + it.aside : ""), {
+      x: o.x + 0.58, y: y + 0.24, w: o.w - 0.8, h: 0.24, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 10, color: DECK.grey
+    });
+  });
+
+  slide.addText(o.foot, {
+    x: o.x + 0.22, y: o.y + o.h - 0.42, w: o.w - 0.44, h: 0.3, isTextBox: true, margin: 0,
+    fontFace: DECK.body, fontSize: 9.5, italic: true, color: DECK.grey
+  });
+}
+
+/* Bouwt het deck. `m` is het model dat buildDeckModel() oplevert. */
+function buildDeck(m, Pptx) {
+  const pres = new Pptx();
+  pres.layout = "LAYOUT_16x9";              // 10 x 5.625 inch
+  pres.author = "KCC Weekstart Dashboard";
+  pres.title  = "KCC Weekstart " + m.period;
+
+  const W = 10, foot = 5.18;
+
+  const zicht = id => !m.secties || m.secties.includes(id);
+
+  let paginaNr = 1;
+  const pageFoot = slide => {
+    const n = ++paginaNr;
+    slide.addText("KCC Weekstart  ·  " + m.period + "  ·  " + m.segment, {
+      x: 0.6, y: foot, w: 7.6, h: 0.28, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 9, color: DECK.grey
+    });
+    badge(slide, n, W - 0.85, foot - 0.02, 0.3, DECK.ice, DECK.navy);
+  };
+
+  /* ---- 1. titel (donker) ---- */
+  const s1 = pres.addSlide();
+  s1.background = { color: DECK.ink };
+  s1.addText("KCC WEEKSTART", {
+    x: 0.7, y: 1.35, w: 8.6, h: 0.3, isTextBox: true, margin: 0,
+    fontFace: DECK.body, fontSize: 12, bold: true, charSpacing: 3, color: DECK.ice
+  });
+  s1.addText(m.period, {
+    x: 0.7, y: 1.75, w: 8.6, h: 0.85, isTextBox: true, margin: 0,
+    fontFace: DECK.head, fontSize: 40, bold: true, color: DECK.paper
+  });
+  s1.addText(m.segment + " · " + m.dayCount + (m.dayCount === 1 ? " dag" : " dagen") + " met data" +
+             (m.uitgesloten && m.uitgesloten.length
+               ? " · " + m.uitgesloten.length +
+                 (m.uitgesloten.length === 1 ? " collega uitgesloten" : " collega's uitgesloten")
+               : ""), {
+    x: 0.7, y: 2.62, w: 8.6, h: 0.32, isTextBox: true, margin: 0,
+    fontFace: DECK.body, fontSize: 14, color: DECK.ice
+  });
+
+  [["Aangeboden", deckNum(m.totals.volume), DECK.paper],
+   ["Aangenomen", deckNum(m.totals.accepted), DECK.paper],
+   ["Acceptatie", pct(m.totals.rate), DECK.ice],
+   ["Gemist", deckNum(m.totals.missed), DECK.ice]
+  ].forEach(([label, value, color], i) => {
+    const x = 0.7 + i * 2.18;
+    s1.addText(value, {
+      x, y: 3.45, w: 2, h: 0.5, isTextBox: true, margin: 0,
+      fontFace: DECK.head, fontSize: 26, bold: true, color
+    });
+    s1.addText(label.toUpperCase(), {
+      x, y: 3.95, w: 2, h: 0.26, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 9.5, bold: true, charSpacing: 1.2, color: DECK.ice
+    });
+  });
+  s1.addNotes("Periode: " + m.period + ". Segment: " + m.segment + ". " +
+              m.dayCount + " dagen met data. " +
+              (m.uitgesloten && m.uitgesloten.length
+                ? "Uitgesloten: " + m.uitgesloten.map(deckShort).join(", ") +
+                  ". Totalen zijn daardoor opgeteld uit de agentregels in plaats van de Total-regel."
+                : "Cijfers komen uit de Total-regel per dagtabblad."));
+
+  /* ---- 2. kerncijfers ---- */
+  if (zicht("kpis")) {
+  const s2 = pres.addSlide();
+  s2.background = { color: DECK.paper };
+  slideTitle(s2, "Kerncijfers", m.segment);
+
+  const cw = 2.19, gap = 0.19;
+  [{ label: "Aangeboden", value: deckNum(m.totals.volume), note: "gem. " + deckNum(m.totals.perDay) + " per dag" },
+   { label: "Aangenomen", value: deckNum(m.totals.accepted), valueColor: DECK.green,
+     note: pct(m.totals.rate) + " acceptatie" },
+   { label: "Gemist", value: deckNum(m.totals.missed), valueColor: DECK.red,
+     note: m.totals.volume ? pct(m.totals.missed / m.totals.volume) + " van aangeboden" : "" },
+   { label: "Gem. handling time", value: deckSecs(m.totals.aht), valueSize: 26,
+     note: "wrap-up " + deckSecs(m.totals.wrap) }
+  ].forEach((c, i) => statCard(s2, { ...c, x: 0.6 + i * (cw + gap), y: 1.45, w: cw, h: 1.5 }));
+
+  // beste en zwakste dag
+  if (m.days.length > 1) {
+    const sorted = [...m.days].filter(d => d.volume > 0).sort((a, b) => b.rate - a.rate);
+    const best = sorted[0], worst = sorted[sorted.length - 1];
+    statCard(s2, {
+      x: 0.6, y: 3.15, w: 4.5, h: 1.35, fill: DECK.mist,
+      label: "Sterkste dag", value: best.label + " · " + pct(best.rate),
+      valueSize: 20, note: deckNum(best.accepted) + " van " + deckNum(best.volume) + " aangenomen"
+    });
+    statCard(s2, {
+      x: 5.28, y: 3.15, w: 4.12, h: 1.35, fill: DECK.mist,
+      label: "Zwakste dag", value: worst.label + " · " + pct(worst.rate),
+      valueSize: 20, valueColor: DECK.red,
+      note: deckNum(worst.missed) + " gemiste hunts"
+    });
+  }
+  pageFoot(s2);
+  s2.addNotes("Aangeboden ≠ aangenomen + gemist: een hunt die bij de één wegvalt kan door een ander zijn opgepakt.");
+  }
+
+  /* ---- 3. volume per dag/week/maand (native chart) ---- */
+  if (zicht("grafieken")) {
+  const s3 = pres.addSlide();
+  s3.background = { color: DECK.paper };
+  slideTitle(s3, "Volume per " + m.buckets.modus, "Verloop");
+  const bl = m.buckets.rijen.map(b => b.kort);
+  s3.addChart(
+    pres.ChartType.bar,
+    [{ name: "Aangenomen", labels: bl, values: m.buckets.rijen.map(b => b.accepted) },
+     { name: "Gemist",     labels: bl, values: m.buckets.rijen.map(b => b.missed) }],
+    {
+      x: 0.6, y: 1.4, w: 8.8, h: 3.5,
+      barDir: "col", barGrouping: "stacked",
+      chartColors: [DECK.green, DECK.red],
+      showLegend: true, legendPos: "b", legendFontFace: DECK.body, legendFontSize: 10,
+      showValue: true, dataLabelPosition: "ctr", dataLabelFontFace: DECK.body,
+      dataLabelFontSize: 9, dataLabelColor: DECK.paper,
+      dataLabelFormatCode: "#,##0;-#,##0;",   // nul-labels blijven leeg, anders overlappen ze
+
+      catAxisLabelFontFace: DECK.body, catAxisLabelFontSize: 10, catAxisLabelColor: DECK.grey,
+      valAxisLabelFontFace: DECK.body, valAxisLabelFontSize: 10, valAxisLabelColor: DECK.grey,
+      catGridLine: { style: "none" }, valGridLine: { color: DECK.line, size: 1 }
+    }
+  );
+  pageFoot(s3);
+  s3.addNotes("Gestapeld: aangenomen plus gemiste hunts per " + m.buckets.modus +
+              ". Bij een lange periode wordt automatisch per week of per maand gegroepeerd.");
+  }
+
+  /* ---- 3b. historie: drie voorgaande periodes + nu ---- */
+  if (zicht("historie") && m.history && m.history.length) {
+    const sh = pres.addSlide();
+    sh.background = { color: DECK.paper };
+    slideTitle(sh, m.historyTitel, "Historie");
+
+    const hw = 2.19, hgap = 0.19;
+
+    m.history.forEach((p, i) => {
+      const x = 0.6 + i * (hw + hgap);
+      const nu = !!p.huidig;
+      slideCard(sh, { x, y: 1.4, w: hw, h: 1.95, fill: nu ? DECK.ice : DECK.mist });
+
+      sh.addText((p.naam || "").toUpperCase(), {
+        x: x + 0.18, y: 1.56, w: hw - 0.36, h: 0.22, isTextBox: true, margin: 0,
+        fontFace: DECK.body, fontSize: 8.5, bold: true, charSpacing: 1, color: nu ? DECK.navy : DECK.grey
+      });
+      sh.addText(p.label, {
+        x: x + 0.18, y: 1.78, w: hw - 0.36, h: 0.26, isTextBox: true, margin: 0,
+        fontFace: DECK.body, fontSize: 10, color: nu ? DECK.navy : DECK.grey
+      });
+      sh.addText(p.leeg ? "–" : pct(p.totals.rate), {
+        x: x + 0.18, y: 2.06, w: hw - 0.36, h: 0.6, isTextBox: true, margin: 0,
+        fontFace: DECK.head, fontSize: 28, bold: true,
+        color: p.leeg ? DECK.grey : (nu ? DECK.navy : DECK.navy)
+      });
+      sh.addText(p.leeg ? "geen data" :
+                 deckNum(p.totals.accepted) + " van " + deckNum(p.totals.volume) + "\n" +
+                 deckNum(p.totals.missed) + " gemist", {
+        x: x + 0.18, y: 2.62, w: hw - 0.36, h: 0.4, isTextBox: true, margin: 0, lineSpacing: 12,
+        fontFace: DECK.body, fontSize: 9.5, color: DECK.grey
+      });
+
+      if (p.onvolledig) {
+        sh.addText("maar " + p.dagen + " van " + (m.historyBasisDagen || m.dayCount) + " dagen", {
+          x: x + 0.18, y: 3.04, w: hw - 0.36, h: 0.24, isTextBox: true, margin: 0,
+          fontFace: DECK.body, fontSize: 9, bold: true, color: DECK.amber
+        });
+      } else if (!p.leeg && p.deltaRate !== null) {
+        const op = p.deltaRate > 0.002, neer = p.deltaRate < -0.002;
+        sh.addText((op ? "▲ +" : neer ? "▼ −" : "± ") +
+                   pct(Math.abs(p.deltaRate)).replace("%", "") + "-punt", {
+          x: x + 0.18, y: 3.06, w: hw - 0.36, h: 0.24, isTextBox: true, margin: 0,
+          fontFace: DECK.body, fontSize: 9.5, bold: true,
+          color: op ? DECK.green : neer ? DECK.red : DECK.grey
+        });
+      }
+    });
+
+    // verloop van de acceptatie; alleen periodes die echt vergelijkbaar zijn
+    const metData = m.history.filter(p => !p.leeg && !p.onvolledig);
+    sh.addChart(
+      pres.ChartType.line,
+      [{ name: "Acceptatie", labels: metData.map(p => p.kort), values: metData.map(p => +(p.totals.rate * 100).toFixed(1) ) }],
+      {
+        x: 0.6, y: 3.5, w: 5.9, h: 1.55,
+        chartColors: [DECK.navy], lineDataSymbol: "circle", lineDataSymbolSize: 7, lineSize: 3,
+        showValue: true, dataLabelPosition: "t", dataLabelFontFace: DECK.body,
+        dataLabelFontSize: 9, dataLabelColor: DECK.navy, dataLabelFormatCode: '0.0"%"',
+        showLegend: false,
+        catAxisLabelFontFace: DECK.body, catAxisLabelFontSize: 9, catAxisLabelColor: DECK.grey,
+        valAxisLabelFontFace: DECK.body, valAxisLabelFontSize: 9, valAxisLabelColor: DECK.grey,
+        valAxisMinVal: Math.max(0, Math.floor(Math.min(...metData.map(p => p.totals.rate * 100)) - 5)),
+        valAxisMaxVal: 100,
+        catGridLine: { style: "none" }, valGridLine: { color: DECK.line, size: 1 }
+      }
+    );
+
+    sh.addText(m.historyNoot, {
+      x: 6.7, y: 3.5, w: 2.7, h: 1.55, isTextBox: true, margin: 0, valign: "top",
+      fontFace: DECK.body, fontSize: 10, color: DECK.grey
+    });
+
+    pageFoot(sh);
+    sh.addNotes("De drie voorgaande periodes hebben dezelfde lengte als de gekozen periode. " +
+                "Een periode zonder data in de geladen bestanden staat als streepje, niet als nul.");
+  }
+
+  /* ---- 4b. bijzonderheden: signalen ---- */
+  if (zicht("bijzonderheden") && m.signals) {
+    const sg = m.signals, o = sg.opties;
+    const ss = pres.addSlide();
+    ss.background = { color: DECK.paper };
+    slideTitle(ss, "Bijzonderheden", "Signalen");
+
+    /* links: dagen waarop het bij meerdere collega's tegelijk misging */
+    slideCard(ss, { x: 0.6, y: 1.4, w: 4.5, h: 3.45, fill: DECK.paper });
+    ss.addShape("ellipse", { x: 0.82, y: 1.64, w: 0.3, h: 0.3, fill: { color: DECK.red } });
+    ss.addText("Dagen met veel gemiste oproepen", {
+      x: 1.2, y: 1.62, w: 3.7, h: 0.34, isTextBox: true, margin: 0, valign: "middle",
+      fontFace: DECK.head, fontSize: 14, bold: true, color: DECK.navy
+    });
+    ss.addText("Minstens " + o.minCollegas + " collega's onder " + pct(o.norm, 0) +
+               " acceptatie op dezelfde dag", {
+      x: 0.82, y: 2.0, w: 4.06, h: 0.32, isTextBox: true, margin: 0,
+      fontFace: DECK.body, fontSize: 9.5, color: DECK.grey
+    });
+
+    if (sg.drukkeDagen.length) {
+      sg.drukkeDagen.slice(0, 3).forEach((d, i) => {
+        const y = 2.42 + i * 0.78;
+        badge(ss, i + 1, 0.82, y + 0.04, 0.28, i === 0 ? DECK.red : DECK.ice,
+              i === 0 ? DECK.paper : DECK.navy);
+        ss.addText(d.label, {
+          x: 1.18, y: y, w: 3.7, h: 0.24, isTextBox: true, margin: 0,
+          fontFace: DECK.body, fontSize: 11.5, bold: true, color: DECK.navy
+        });
+        ss.addText(d.onder.length + " collega's onder de norm · " + deckNum(d.missed) +
+                   " gemist (" + pct(d.rate) + ")", {
+          x: 1.18, y: y + 0.23, w: 3.7, h: 0.22, isTextBox: true, margin: 0,
+          fontFace: DECK.body, fontSize: 9.5, color: DECK.grey
+        });
+        ss.addText(d.onder.slice(0, 4).map(a => deckShort(a.name)).join(", ") +
+                   (d.onder.length > 4 ? " +" + (d.onder.length - 4) : ""), {
+          x: 1.18, y: y + 0.44, w: 3.7, h: 0.22, isTextBox: true, margin: 0,
+          fontFace: DECK.body, fontSize: 9, italic: true, color: DECK.grey
+        });
+      });
+    } else {
+      ss.addText("Geen dag waarop " + o.minCollegas + " of meer collega's tegelijk onder de norm bleven.", {
+        x: 0.82, y: 2.5, w: 4.06, h: 0.5, isTextBox: true, margin: 0,
+        fontFace: DECK.body, fontSize: 11, italic: true, color: DECK.green
+      });
+    }
+
+    /* rechts: bereikbaarheid, drie terugkerende patronen onder elkaar */
+    const blokken = [
+      { titel: "Vaak lang op Away", rijen: sg.away, kleur: DECK.amber,
+        regel: "meer dan " + (o.maxAway / 3600).toFixed(1).replace(".", ",") + " uur" },
+      { titel: "Vaak lang op Busy", rijen: sg.busy, kleur: DECK.amber,
+        regel: "meer dan " + (o.maxBusy / 3600).toFixed(1).replace(".", ",") + " uur" },
+      { titel: "Teams niet af- of opgestart", rijen: sg.lang, kleur: DECK.red,
+        regel: "meer dan " + (o.maxTotaal / 3600).toFixed(1).replace(".", ",") + " uur totaal ingelogd" }
+    ];
+
+    blokken.forEach((b, i) => {
+      const y = 1.4 + i * 1.18;
+      slideCard(ss, { x: 5.28, y, w: 4.12, h: 1.05, fill: DECK.mist });
+      ss.addShape("ellipse", { x: 5.46, y: y + 0.16, w: 0.18, h: 0.18,
+                               fill: { color: b.rijen.length ? b.kleur : DECK.green } });
+      ss.addText(b.titel, {
+        x: 5.72, y: y + 0.12, w: 3.5, h: 0.26, isTextBox: true, margin: 0, valign: "middle",
+        fontFace: DECK.body, fontSize: 11.5, bold: true, color: DECK.navy
+      });
+      ss.addText(b.regel + ", op minstens " + o.minDagen + " dagen", {
+        x: 5.46, y: y + 0.37, w: 3.76, h: 0.2, isTextBox: true, margin: 0,
+        fontFace: DECK.body, fontSize: 8.5, color: DECK.grey
+      });
+      ss.addText(
+        b.rijen.length
+          ? b.rijen.slice(0, 3).map(e => deckShort(e.name) + "  " + e.keer + "/" + e.van +
+                                          " dagen, max " + deckSecs(e.hoogste).slice(0, 5)).join("\n")
+          : "Niemand komt er structureel boven.",
+        {
+          x: 5.46, y: y + 0.58, w: 3.76, h: 0.42, isTextBox: true, margin: 0, lineSpacing: 11,
+          fontFace: DECK.body, fontSize: 9,
+          color: b.rijen.length ? DECK.navy : DECK.green,
+          italic: !b.rijen.length
+        }
+      );
+      if (b.rijen.length > 3) {
+        ss.addText("+" + (b.rijen.length - 3) + " meer", {
+          x: 8.0, y: y + 0.12, w: 1.2, h: 0.24, isTextBox: true, margin: 0, align: "right",
+          fontFace: DECK.body, fontSize: 8.5, color: DECK.grey
+        });
+      }
+    });
+
+    pageFoot(ss);
+    ss.addNotes("Signalen zijn terugkerend bedoeld: een medewerker verschijnt pas na minstens " +
+                o.minDagen + " dagen. Normen staan in het dashboard en zijn aan te passen. " +
+                "Kijk naar roosteruren en taken buiten de lijn voordat je iemand hierop aanspreekt.");
+  }
+
+  /* ---- 4. top 3 ---- */
+  if (zicht("top3")) {
+  const s4 = pres.addSlide();
+  s4.background = { color: DECK.paper };
+  slideTitle(s4, "Top 3", "Medewerkers");
+  const tw = 2.93, tgap = 0.2;
+  [[m.top.missed, DECK.red], [m.top.receptie, DECK.navy], [m.top.outbound, DECK.amber]]
+    .forEach(([list, accent], i) => {
+      topCard(s4, {
+        x: 0.6 + i * (tw + tgap), y: 1.4, w: tw, h: 3.45,
+        accent, title: list.title, sub: list.sub, items: list.items, foot: list.foot
+      });
+    });
+  pageFoot(s4);
+  s4.addNotes("Deze drie lijsten lezen alle blokken van elk dagtabblad, los van het gekozen segment.");
+  }
+
+  /* ---- 5. medewerkers ---- */
+  if (zicht("medewerkers")) {
+  const s5 = pres.addSlide();
+  s5.background = { color: DECK.paper };
+  slideTitle(s5, "Medewerkers", m.segment + " · top " + Math.min(10, m.agents.length));
+
+  const head = ["#", "Medewerker", "Aangeboden", "Aangenomen", "Gemist", "Acceptatie", "Gem. AHT"];
+  const rows = [head.map(h => ({
+    text: h,
+    options: { bold: true, color: DECK.paper, fill: { color: DECK.navy }, fontSize: 10.5,
+               fontFace: DECK.body, align: h === "#" || h === "Medewerker" ? "left" : "right" }
+  }))];
+  m.agents.slice(0, 10).forEach((a, i) => {
+    const tint = i % 2 ? DECK.mist : DECK.paper;
+    const cell = (text, align, color, bold) => ({
+      text, options: { align, color: color || DECK.navy, bold: !!bold, fontSize: 10.5,
+                       fontFace: DECK.body, fill: { color: tint } }
+    });
+    rows.push([
+      cell(String(i + 1), "left", DECK.grey),
+      cell(deckShort(a.name), "left", DECK.navy, true),
+      cell(deckNum(a.volume), "right"),
+      cell(deckNum(a.accepted), "right"),
+      cell(deckNum(a.missed), "right", a.missed > 0 ? DECK.red : DECK.grey),
+      cell(pct(a.rate), "right", a.rate < 0.85 ? DECK.red : DECK.green, true),
+      cell(deckSecs(a.aht), "right", DECK.grey)
+    ]);
+  });
+  s5.addTable(rows, {
+    x: 0.6, y: 1.4, w: 8.8, colW: [0.45, 2.45, 1.25, 1.3, 0.95, 1.1, 1.3],
+    rowH: 0.31, border: { type: "solid", color: DECK.line, pt: 1 }, valign: "middle", margin: 0.06
+  });
+  pageFoot(s5);
+  s5.addNotes("Gesorteerd op aangenomen calls. Acceptatie onder de norm staat rood.");
+  }
+
+  /* ---- 6. aandachtspunten (donker) ---- */
+  const s6 = pres.addSlide();
+  s6.background = { color: DECK.ink };
+  s6.addText("AANDACHTSPUNTEN", {
+    x: 0.7, y: 0.62, w: 8.6, h: 0.3, isTextBox: true, margin: 0,
+    fontFace: DECK.body, fontSize: 11, bold: true, charSpacing: 3, color: DECK.ice
+  });
+  s6.addText("Wat opvalt deze periode", {
+    x: 0.7, y: 0.92, w: 8.6, h: 0.6, isTextBox: true, margin: 0,
+    fontFace: DECK.head, fontSize: 30, bold: true, color: DECK.paper
+  });
+  m.notes.slice(0, 4).forEach((n, i) => {
+    const y = 1.85 + i * 0.78;
+    badge(s6, i + 1, 0.7, y + 0.04, 0.32, DECK.ice, DECK.ink);
+    s6.addText(n, {
+      x: 1.18, y: y - 0.02, w: 8.1, h: 0.62, isTextBox: true, margin: 0, valign: "top",
+      fontFace: DECK.body, fontSize: 13, color: DECK.paper
+    });
+  });
+  s6.addNotes("Automatisch afgeleid uit de cijfers van deze periode — check ze voordat je ze uitspreekt.");
+
+  return pres;
+}
+
+/* Zet de dashboardstaat om in het model dat buildDeck() verwacht. */
+function buildDeckModel(days, allDays, segment, fromISO, toISO, history, signals, secties, uitgeslotenLijst) {
+  const totals = computeTotals(days);
+  const top = topLists(allDays);
+  const agents = agentTable(days);
+
+  const buckets = bucketize(days);
+  const dayRows = days.map(d => ({
+    label: fmtDate(d.iso, { weekday: "short", day: "numeric", month: "short" }),
+    volume: d.totals.volume, accepted: d.totals.accepted, missed: d.totals.missed,
+    rate: d.totals.volume ? d.totals.accepted / d.totals.volume : 0
+  }));
+
+  /* korte observaties, alleen op basis van wat er in de cijfers staat */
+  const notes = [];
+  notes.push("Van " + deckNum(totals.volume) + " aangeboden " + segment.toLowerCase() +
+             "-hunts werd " + pct(totals.rate) + " aangenomen; " +
+             deckNum(totals.missed) + " hunts liepen mis.");
+
+  const withVol = dayRows.filter(d => d.volume > 0);
+  if (withVol.length > 1) {
+    const worst = [...withVol].sort((a, b) => a.rate - b.rate)[0];
+    const best  = [...withVol].sort((a, b) => b.rate - a.rate)[0];
+    notes.push(worst.label + " was de zwakste dag met " + pct(worst.rate) +
+               " acceptatie (" + deckNum(worst.missed) + " gemist), " + best.label +
+               " de sterkste met " + pct(best.rate) + ".");
+  }
+
+  const lag = agents.filter(a => a.volume >= 20 && a.rate < 0.85)
+                    .sort((a, b) => a.rate - b.rate).slice(0, 2);
+  if (lag.length) {
+    notes.push("Onder de 85% acceptatie: " +
+               lag.map(a => deckShort(a.name) + " (" + pct(a.rate) + ")").join(" en ") +
+               " — de rest zit daarboven.");
+  }
+  if (top.missed.items.length) {
+    const t = top.missed.items[0];
+    notes.push(deckShort(t.name) + " miste de meeste hunts (" + deckNum(t.value) +
+               "). Kijk daarbij naar bereikbaarheid en roosteruren, niet alleen naar het aantal.");
+  }
+
+  /* historie: één observatie erbij, en de toelichting naast de grafiek */
+  let historyNoot = "", historyTitel = "";
+  if (history && history.length) {
+    historyTitel = history.plan ? history.plan.titel : "Vergelijking";
+    const bruikbaar = history.filter(p => !p.leeg && !p.onvolledig);
+    const nu = history[history.length - 1];
+
+    historyNoot = history.plan ? history.plan.noot : "";
+    if (history.some(p => p.leeg)) {
+      historyNoot += " Periodes zonder cijfers zitten niet in de geladen bestanden.";
+    }
+    if (history.some(p => p.onvolledig)) {
+      historyNoot += " Periodes met minder dagen zijn niet vergelijkbaar en staan niet in de grafiek.";
+    }
+
+    const eerder = bruikbaar.filter(p => !p.huidig);
+    if (eerder.length && nu.deltaRate !== null) {
+      const richting = nu.deltaRate > 0.002 ? "hoger" : nu.deltaRate < -0.002 ? "lager" : "gelijk";
+      const gem = eerder.reduce((s, p) => s + p.totals.rate, 0) / eerder.length;
+      // meteen achter het openingscijfer: de slotslide toont er vier
+      notes.splice(1, 0,
+                 "De acceptatie ligt " +
+                 (richting === "gelijk" ? "gelijk aan" :
+                  pct(Math.abs(nu.deltaRate)).replace("%", "") + "-punt " + richting + " dan") +
+                 " de vorige periode, en " +
+                 (nu.totals.rate >= gem ? "boven" : "onder") +
+                 " het gemiddelde van " + pct(gem) + " over de " + eerder.length +
+                 " vergelijkbare " + (eerder.length === 1 ? "periode" : "periodes") + " ervoor.");
+    }
+  }
+
+  return {
+    segment, days: dayRows, buckets, agents, top, totals, notes, signals,
+    secties, uitgesloten: uitgeslotenLijst || [],
+    historyBasisDagen: history ? history.basisDagen : 0,
+    history: history || [], historyNoot, historyTitel,
+    dayCount: days.length,
+    period: periodLabel(fromISO, toISO)
+  };
+}
+
+/* ==== DECK END ==== */
+
+function drawCharts(buckets, accepted, missed) {
+  Object.values(charts).forEach(c => c && c.destroy());
+  $("cDailyTitle").textContent = "Volume per " + buckets.modus;
+
+  charts.daily = new Chart($("cDaily"), {
+    type: "bar",
+    data: {
+      labels: buckets.rijen.map(b => b.kort),
+      datasets: [
+        { label: "Aangenomen", data: buckets.rijen.map(b => b.accepted), backgroundColor: "#0f9d58", stack: "s" },
+        { label: "Gemist",     data: buckets.rijen.map(b => b.missed),   backgroundColor: "#d93025", stack: "s" }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom" } },
+      scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, beginAtZero: true } }
+    }
+  });
+
+  charts.split = new Chart($("cSplit"), {
+    type: "doughnut",
+    data: {
+      labels: ["Aangenomen", "Gemist"],
+      datasets: [{ data: [accepted, missed], backgroundColor: ["#0f9d58", "#d93025"], borderColor: "#fff", borderWidth: 2 }]
+    },
+    options: { responsive: true, maintainAspectRatio: false, cutout: "58%", plugins: { legend: { position: "bottom" } } }
+  });
+}
+
+/* ---------- file input ---------- */
+
+/* Meerdere maandbestanden kunnen naast elkaar openstaan: een week die over de
+   maandgrens loopt (31-08 t/m 05-09) haalt zijn dagen dan uit twee bestanden.
+   De dagtabbladen worden samengevoegd tot één index op dag+maand. */
+
+$("file").addEventListener("change", async e => {
+  const gekozen = [...e.target.files];
+  e.target.value = "";                     // zodat hetzelfde bestand opnieuw gekozen kan worden
+  if (!gekozen.length) return;
+
+  say(gekozen.length === 1 ? "Bestand inlezen…" : gekozen.length + " bestanden inlezen…", "info");
+  const mislukt = [];
+
+  for (const f of gekozen) {
+    try {
+      const buf = await f.arrayBuffer();
+      const wb = XLSX.read(new Uint8Array(buf), { type: "array" });
+      const bestaand = books.findIndex(b => b.name === f.name);
+      if (bestaand > -1) books[bestaand] = { name: f.name, wb };   // zelfde naam = vervangen
+      else books.push({ name: f.name, wb });
+    } catch (err) {
+      mislukt.push(f.name + " (" + err.message + ")");
+    }
+  }
+  rebuildIndex(mislukt);
+});
+
+// Bouwt sheetIndex opnieuw op uit alle geladen bestanden.
+function rebuildIndex(mislukt) {
+  sheetIndex = [];
+  blockCache.clear();
+  const dubbel = [];
+  const zonderDagen = [];
+
+  books.forEach((b, bookIdx) => {
+    let gevonden = 0;
+    for (const naam of b.wb.SheetNames) {
+      const d = parseSheetDate(naam);
+      if (!d) continue;
+      gevonden++;
+      const i = sheetIndex.findIndex(s => s.day === d.day && s.month === d.month);
+      if (i > -1) {
+        // Zelfde dag in twee bestanden: het laatst toegevoegde bestand wint.
+        dubbel.push(pad(d.day) + "-" + pad(d.month) + " (" + books[sheetIndex[i].bookIdx].name +
+                    " → " + b.name + ")");
+        sheetIndex[i] = { name: naam, ...d, bookIdx };
+      } else {
+        sheetIndex.push({ name: naam, ...d, bookIdx });
+      }
+    }
+    b.dagen = gevonden;
+    if (!gevonden) zonderDagen.push(b.name);
+  });
+
+  sheetIndex.sort((a, b) => a.month - b.month || a.day - b.day);
+  renderFiles();
+
+  if (!sheetIndex.length) {
+    return say("Geen dagtabbladen herkend. Verwacht tabbladnamen als \"17-08\" of \"31-08\"." +
+               (mislukt.length ? " Niet gelezen: " + mislukt.join(", ") : ""), "err");
+  }
+
+  applyFileRange();
+
+  const bericht = [
+    sheetIndex.length + " dagen beschikbaar (" + sheetIndex[0].name + " t/m " +
+      sheetIndex[sheetIndex.length - 1].name + ") uit " +
+      books.length + (books.length === 1 ? " bestand" : " bestanden")
+  ];
+  if (dubbel.length)      bericht.push("dubbele dagen, laatste bestand telt: " + dubbel.join(", "));
+  if (zonderDagen.length) bericht.push("geen dagtabbladen in: " + zonderDagen.join(", "));
+  if (mislukt.length)     bericht.push("niet gelezen: " + mislukt.join(", "));
+  say(bericht.join(" · "), (dubbel.length || zonderDagen.length || mislukt.length) ? "warn" : "ok");
+}
+
+function renderFiles() {
+  const el = $("files");
+  el.classList.toggle("hide", !books.length);
+  el.innerHTML = books.map((b, i) => `
+    <span class="chip">${b.name} <span class="n">${b.dagen} dagen</span>
+      <button data-verwijder="${i}" title="Verwijderen">×</button></span>`).join("");
+}
+
+$("files").addEventListener("click", e => {
+  const i = e.target.dataset.verwijder;
+  if (i === undefined) return;
+  books.splice(+i, 1);
+  lastRun = null;
+  $("pptx").disabled = true;
+  if (!books.length) {
+    sheetIndex = [];
+    renderFiles();
+    $("out").classList.add("hide");
+    $("empty").classList.remove("hide");
+    return say("Alle bestanden verwijderd.", "info");
+  }
+  rebuildIndex([]);
+});
+
+/* ---------- datumkeuze ---------- */
+
+// Jaar is niet af te leiden uit "17-08"; we gebruiken het huidige jaar.
+const YEAR = new Date().getFullYear();
+const iso = (y, m, d) => y + "-" + pad(m) + "-" + pad(d);
+
+function applyFileRange() {
+  const sorted = [...sheetIndex].sort((a, b) => a.month - b.month || a.day - b.day);
+  $("from").value = iso(YEAR, sorted[0].month, sorted[0].day);
+  $("to").value   = iso(YEAR, sorted[sorted.length - 1].month, sorted[sorted.length - 1].day);
+}
+
+function mondayOf(date) {
+  const d = new Date(date);
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d;
+}
+
+$("presets").addEventListener("click", e => {
+  const p = e.target.dataset.preset;
+  if (!p) return;
+  const today = new Date();
+
+  if (p === "all") {
+    if (!sheetIndex.length) return say("Upload eerst een bestand.", "err");
+    return applyFileRange();
+  }
+  if (p === "month") {
+    $("from").value = iso(today.getFullYear(), today.getMonth() + 1, 1);
+    $("to").value   = isoOf(today);
+    return;
+  }
+  const mon = mondayOf(today);
+  if (p === "lastweek") mon.setDate(mon.getDate() - 7);
+  const sat = new Date(mon); sat.setDate(sat.getDate() + 5);   // ma t/m za
+  $("from").value = isoOf(mon);
+  $("to").value   = isoOf(p === "thisweek" && sat > today ? today : sat);
+});
+
+$("run").addEventListener("click", build);
+
+/* ---------- weergave en filters: bediening ---------- */
+
+function bouwSectieVinkjes() {
+  $("secties").innerHTML = SECTIES.map(s => `
+    <label><input type="checkbox" data-sectie-toggle="${s.id}" ${zichtbaar.has(s.id) ? "checked" : ""}>
+      ${s.naam}</label>`).join("");
+}
+
+function pasSectiesToe() {
+  for (const el of document.querySelectorAll("[data-sectie]")) {
+    el.classList.toggle("hide", !zichtbaar.has(el.dataset.sectie));
+  }
+  const uit = SECTIES.length - zichtbaar.size;
+  $("filterSamenvatting").textContent =
+    (uit ? uit + (uit === 1 ? " onderdeel verborgen" : " onderdelen verborgen") : "alle onderdelen zichtbaar") +
+    " · " +
+    (uitgesloten.size ? uitgesloten.size + (uitgesloten.size === 1 ? " collega uitgesloten" : " collega's uitgesloten")
+                      : "geen collega's uitgesloten");
+}
+
+$("secties").addEventListener("change", e => {
+  const id = e.target.dataset.sectieToggle;
+  if (!id) return;
+  e.target.checked ? zichtbaar.add(id) : zichtbaar.delete(id);
+  pasSectiesToe();
+});
+
+/* Namenlijst voor het zoekveld: iedereen die in de laatste run voorkwam. */
+function verzamelCollegas(allDays) {
+  const m = new Map();
+  for (const d of allDays) {
+    for (const seg of ["Inbound", "Outbound", "Receptie"]) {
+      const s = d.all[seg];
+      if (!s) continue;
+      for (const a of s.agents) {
+        const e = m.get(a.name) || { name: a.name, calls: 0, dagen: 0 };
+        e.calls += a.volume; e.dagen++;
+        m.set(a.name, e);
+      }
+    }
+    if (d.all.Presence) {
+      for (const a of d.all.Presence.agents) {
+        if (!m.has(a.name)) m.set(a.name, { name: a.name, calls: 0, dagen: 0 });
+      }
+    }
+  }
+  for (const naam of uitgesloten) {                    // uitgeslotenen blijven vindbaar
+    if (![...m.keys()].some(k => k.toLowerCase() === naam)) m.set(naam, { name: naam, calls: 0, dagen: 0 });
+  }
+  return [...m.values()].sort((a, b) => b.calls - a.calls);
+}
+
+function renderChips() {
+  $("uitgeslotenChips").innerHTML = [...uitgesloten].sort().map(n => `
+    <span class="chip">${shortName(n)}
+      <button data-herstel="${n}" title="Weer meetellen">×</button></span>`).join("");
+}
+
+$("uitgeslotenChips").addEventListener("click", e => {
+  const n = e.target.dataset.herstel;
+  if (!n) return;
+  uitgesloten.delete(n);
+  renderChips(); pasSectiesToe();
+  if (lastRun) build();
+});
+
+let zoekIndex = 0;
+
+function toonZoekOpties() {
+  const q = $("zoekCollega").value.trim().toLowerCase();
+  const treffers = bekendeCollegas
+    .filter(c => !uitgesloten.has(c.name.toLowerCase()))
+    .filter(c => !q || c.name.toLowerCase().includes(q))
+    .slice(0, 40);
+
+  zoekIndex = 0;
+  $("zoekOpties").innerHTML = treffers.length
+    ? treffers.map((c, i) => `<button data-sluit-uit="${c.name}" class="${i ? "" : "actief"}">${shortName(c.name)}
+        <span class="sub">${c.calls ? deckNum(c.calls) + " calls" : "alleen presence"}</span></button>`).join("")
+    : `<div class="leeg">Geen collega gevonden.</div>`;
+  $("zoekOpties").classList.remove("hide");
+}
+
+function sluitUit(naam) {
+  uitgesloten.add(naam.toLowerCase());
+  $("zoekCollega").value = "";
+  $("zoekOpties").classList.add("hide");
+  renderChips(); pasSectiesToe();
+  if (lastRun) build();
+}
+
+$("zoekCollega").addEventListener("input", toonZoekOpties);
+$("zoekCollega").addEventListener("focus", toonZoekOpties);
+$("zoekCollega").addEventListener("blur", () => setTimeout(() => $("zoekOpties").classList.add("hide"), 150));
+$("zoekCollega").addEventListener("keydown", e => {
+  const knoppen = [...$("zoekOpties").querySelectorAll("button")];
+  if (e.key === "Escape") return $("zoekOpties").classList.add("hide");
+  if (!knoppen.length) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    zoekIndex = (zoekIndex + (e.key === "ArrowDown" ? 1 : knoppen.length - 1)) % knoppen.length;
+    knoppen.forEach((b, i) => b.classList.toggle("actief", i === zoekIndex));
+    knoppen[zoekIndex].scrollIntoView({ block: "nearest" });
+  }
+  if (e.key === "Enter") { e.preventDefault(); sluitUit(knoppen[zoekIndex].dataset.sluitUit); }
+});
+$("zoekOpties").addEventListener("mousedown", e => {
+  const n = e.target.closest("[data-sluit-uit]");
+  if (n) { e.preventDefault(); sluitUit(n.dataset.sluitUit); }
+});
+
+/* ---------- PowerPoint-export ---------- */
+
+// Haalt pptxgenjs alsnog op als de script-tag niet laadde (reserve-CDN).
+function ensurePptx() {
+  if (typeof PptxGenJS !== "undefined") return Promise.resolve(true);
+  const bronnen = [
+    "https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js",
+    "https://unpkg.com/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"
+  ];
+  return bronnen.reduce(
+    (keten, src) => keten.then(ok => ok || new Promise(res => {
+      const s = document.createElement("script");
+      s.src = src;
+      s.onload  = () => res(typeof PptxGenJS !== "undefined");
+      s.onerror = () => res(false);
+      document.head.appendChild(s);
+    })),
+    Promise.resolve(false)
+  );
+}
+
+$("pptx").addEventListener("click", async () => {
+  if (!lastRun) return say("Maak eerst een dashboard.", "err");
+
+  if (typeof PptxGenJS === "undefined") {
+    say("PowerPoint-bibliotheek laden…", "info");
+    if (!await ensurePptx()) {
+      return say("De PowerPoint-bibliotheek kan niet worden geladen. Blokkeert het netwerk " +
+                 "cdn.jsdelivr.net en unpkg.com, of ben je offline? Het dashboard zelf blijft gewoon werken.", "err");
+    }
+  }
+
+  const btn = $("pptx");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "Bezig…";
+
+  try {
+    const m = buildDeckModel(lastRun.days, lastRun.allDays, lastRun.segment,
+                             lastRun.fromISO, lastRun.toISO, lastRun.history, lastRun.signals,
+                             [...zichtbaar], lastRun.uitgesloten);
+    const pres = buildDeck(m, PptxGenJS);
+    const file = "KCC Weekstart " + lastRun.fromISO + " t-m " + lastRun.toISO +
+                 " (" + lastRun.segment + ").pptx";
+    await pres.writeFile({ fileName: file });
+    say("PowerPoint gedownload: " + file, "ok");
+  } catch (err) {
+    say("Export mislukt: " + err.message, "err");
+    console.error(err);
+  } finally {
+    btn.textContent = label;
+    btn.disabled = false;
+  }
+});
+$("segment").addEventListener("change", () => { if (books.length && $("from").value) build(); });
+$("vgl").addEventListener("change", () => { if (lastRun) build(); });
+
+// normen aanpassen = meteen opnieuw doorrekenen
+for (const id of ["nNorm", "nAway", "nBusy", "nTotaal", "nDagen"]) {
+  $(id).addEventListener("change", () => { if (lastRun) build(); });
+}
+
+bouwSectieVinkjes();
+pasSectiesToe();
+
+// standaard: vorige week (ma t/m za)
+(function initDates() {
+  const mon = mondayOf(new Date()); mon.setDate(mon.getDate() - 7);
+  const sat = new Date(mon); sat.setDate(sat.getDate() + 5);
+  $("from").value = isoOf(mon);
+  $("to").value = isoOf(sat);
+})();
+</script>
+</body>
+</html>
